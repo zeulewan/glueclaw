@@ -1,0 +1,25 @@
+{
+  "id": "glueclaw",
+  "enabledByDefault": false,
+  "providers": ["glueclaw"],
+  "providerAuthEnvVars": {
+    "glueclaw": ["GLUECLAW_KEY"]
+  },
+  "providerAuthChoices": [
+    {
+      "provider": "glueclaw",
+      "method": "local",
+      "choiceId": "glueclaw",
+      "choiceLabel": "GlueClaw",
+      "choiceHint": "Claude via local CLI subprocess (Max subscription)",
+      "groupId": "glueclaw",
+      "groupLabel": "GlueClaw",
+      "groupHint": "Claude CLI subprocess provider"
+    }
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

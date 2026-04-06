@@ -1,0 +1,16 @@
+{
+  "name": "@openclaw/glueclaw-provider",
+  "version": "2026.4.5",
+  "private": true,
+  "description": "GlueClaw - Claude CLI subprocess provider for Max subscription",
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "@mariozechner/pi-agent-core": "^0.65.2",
+    "@mariozechner/pi-ai": "^0.65.2"
+  }
+}
