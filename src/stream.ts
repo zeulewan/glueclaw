@@ -114,13 +114,16 @@ export function createClaudeCliStreamFn(opts: {
         const sessionKey = `glueclaw:${opts.sessionKey ?? "default"}`;
         const existingSessionId = sessionMap.get(sessionKey);
         if (existingSessionId) {
-          // Resuming: don't pass --system-prompt, the session already has it
           args.push("--resume", existingSessionId);
         } else {
-          // New session: pass the scrubbed system prompt
           if (cleanPrompt) args.push("--system-prompt", cleanPrompt);
         }
         if (resolvedModel) args.push("--model", resolvedModel);
+
+        // Debug: log args for resume troubleshooting
+        const logArgs = args.filter(a => a !== cleanPrompt).join(" ");
+        console.log(`[glueclaw] spawn: claude ${logArgs} ${existingSessionId ? "(resume)" : "(new)"}`);
+
 
         // Extract user message and scrub it too
         const lastUser = [...(context.messages ?? [])].reverse().find(m => m.role === "user");
