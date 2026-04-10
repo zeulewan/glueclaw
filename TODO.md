@@ -10,6 +10,10 @@
 - **Cron untested** - should work via MCP bridge but never verified
 - **Gateway disconnect timing** - TUI sometimes fails to connect if started too soon after gateway startup
 
+## Bugs
+
+- **Duplicate messages on Telegram** - some messages appear twice, likely streaming text_delta + result event both triggering delivery. Not all messages, intermittent.
+
 ## Nice to have
 
 - **Tool activity indicators** - TUI shows spinner but no "Running Bash..." status. Would need dist patch to inject events into gateway event bus.
