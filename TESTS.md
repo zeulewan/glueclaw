@@ -86,6 +86,6 @@ GLUECLAW_KEY=local openclaw tui
 ## Workstation deployment
 
 ```bash
-ssh user@your-server "export PATH=/home/zeul/.npm-global/bin:\$PATH && export GLUECLAW_KEY=local && openclaw agent --agent main --message 'say banana' 2>&1 | tail -1"
+ssh user@your-server "export PATH=\$HOME/.npm-global/bin:\$PATH && export GLUECLAW_KEY=local && openclaw agent --agent main --message 'say banana' 2>&1 | tail -1"
 # Expected: banana
 ```
