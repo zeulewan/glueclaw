@@ -117,7 +117,7 @@ fi
 # --- 6. Patch: MCP bridge ---
 
 echo "[6/7] Patching gateway for MCP bridge..."
-SERVER_FILE=$(grep -l "mcp loopback listening" "$OPENCLAW_DIST"/server-*.js 2>/dev/null | head -1)
+SERVER_FILE=$(grep -rl "mcp loopback listening" "$OPENCLAW_DIST"/*.js 2>/dev/null | head -1)
 if [ -n "$SERVER_FILE" ] && ! grep -q "__GLUECLAW_MCP" "$SERVER_FILE"; then
   cp "$SERVER_FILE" "${SERVER_FILE}.glueclaw-bak"
   sedi 's/logDebug(`mcp loopback listening/process.env.__GLUECLAW_MCP_PORT = String(address.port); process.env.__GLUECLAW_MCP_TOKEN = token; logDebug(`mcp loopback listening/' "$SERVER_FILE"
