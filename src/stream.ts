@@ -175,9 +175,7 @@ export function createClaudeCliStreamFn(opts: {
           if (started) {
             stream.push({ type: "text_end", contentIndex: 0, content: text, partial: buildMsg(info, text, buildUsage(usage)) });
           }
-          // Only include text in done if it wasn't already streamed
-          const doneText = streamed ? "" : (text || "(no response)");
-          stream.push({ type: "done", reason: "stop", message: buildMsg(info, doneText, buildUsage(usage)) });
+          stream.push({ type: "done", reason: "stop", message: buildMsg(info, text || "(no response)", buildUsage(usage)) });
         };
 
         const rl = createInterface({ input: proc.stdout! });
