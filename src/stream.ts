@@ -114,9 +114,9 @@ export function createClaudeCliStreamFn(opts: {
         if (resolvedModel) args.push("--model", resolvedModel);
 
         // Resume session for multi-turn conversation memory
-        // Key includes provider to avoid resuming sessions from other providers (e.g. Codex)
         const sessionKey = `glueclaw:${opts.sessionKey ?? "default"}`;
         const existingSessionId = sessionMap.get(sessionKey);
+        const isResume = !!existingSessionId;
         if (existingSessionId) {
           args.push("--resume", existingSessionId);
         }
