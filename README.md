@@ -1,8 +1,8 @@
 # GlueClaw
 
-Glue Claude back into OpenClaw. **Experimental** - may be buggy.
+Glue Claude back into OpenClaw. May be buggy.
 
-Uses the official Claude CLI and scrubs out any mention of "OpenClaw" from the system prompt due to [Anthropic not allowing its use](https://iili.io/BuL3tKN.png). Tested with Telegram, but heartbeats and some other features remain to be tested. (tool calls dont show up in the TUI)
+Uses the official Claude code and scrubs out any mention of "OpenClaw" from the system prompt due to [Anthropic not allowing its use](https://iili.io/BuL3tKN.png). Tested with Telegram. As far as I can tell all functions work such as heartbeats.
 
 ## Install
 
