@@ -98,8 +98,13 @@ export function createClaudeCliStreamFn(opts: {
         if (cleanPrompt) args.push("--system-prompt", cleanPrompt);
         if (resolvedModel) args.push("--model", resolvedModel);
 
-        // Resume disabled - resumed sessions accumulate context that triggers detection
-        const sessionKey = opts.sessionKey ?? "default";
+        // Resume session for multi-turn conversation memory
+        // Key includes provider to avoid resuming sessions from other providers (e.g. Codex)
+        const sessionKey = `glueclaw:${opts.sessionKey ?? "default"}`;
+        const existingSessionId = sessionMap.get(sessionKey);
+        if (existingSessionId) {
+          args.push("--resume", existingSessionId);
+        }
 
         // Extract user message and scrub it too
         const lastUser = [...(context.messages ?? [])].reverse().find(m => m.role === "user");
