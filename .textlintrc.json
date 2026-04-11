@@ -1,8 +1,0 @@
-{
-  "rules": {
-    "terminology": {
-      "defaultTerms": true,
-      "exclude": ["Git"]
-    }
-  }
-}
