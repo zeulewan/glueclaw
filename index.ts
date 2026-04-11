@@ -55,7 +55,7 @@ export default definePluginEntry({
               {
                 id: "glueclaw-sonnet",
                 name: "GlueClaw Sonnet",
-                contextWindow: 200_000,
+                contextWindow: 1_000_000,
                 maxTokens: 16_000,
               },
               {
@@ -92,7 +92,7 @@ export default definePluginEntry({
           id: "glueclaw-sonnet",
           name: "GlueClaw Sonnet",
           provider: PROVIDER_ID,
-          contextWindow: 200_000,
+          contextWindow: 1_000_000,
           reasoning: true,
         },
         {

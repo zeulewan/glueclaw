@@ -8,13 +8,13 @@ Uses the official Claude CLI and scrubs out [Anthropic's detection triggers](doc
 
 ## Install
 
-Requires [OpenClaw](https://docs.openclaw.ai) and [Claude Code](https://claude.ai/claude-code) logged in with Max. Non-destructive, won't touch your existing config or sessions. Works with OpenClaw 2026.4.2+.
+Requires [OpenClaw](https://docs.openclaw.ai) 2026.4.10+ and [Claude Code](https://claude.ai/claude-code) logged in with Max. Non-destructive, won't touch your existing config or sessions.
 
 ```bash
 git clone https://github.com/zeulewan/glueclaw.git && cd glueclaw && bash install.sh
 ```
 
-See [installation docs](docs/installation.md) for uninstall and details.
+See [installation docs](docs/index.md) for uninstall and details.
 
 ## How it works
 
@@ -37,7 +37,7 @@ The only way this breaks is if Anthropic changes how `--system-prompt` or `--out
 | Model | Claude Model | Context |
 |-------|-------------|---------|
 | `glueclaw/glueclaw-opus` | Opus 4.6 | 1M |
-| `glueclaw/glueclaw-sonnet` | Sonnet 4.6 | 200k |
+| `glueclaw/glueclaw-sonnet` | Sonnet 4.6 | 1M |
 | `glueclaw/glueclaw-haiku` | Haiku 4.5 | 200k |
 
 Switch in TUI: `/model glueclaw/glueclaw-opus`
@@ -54,10 +54,9 @@ Uses only official, documented Claude Code CLI flags. No reverse engineering, no
 
 ## Docs
 
-- [Installation](docs/installation.md)
+- [Docs](docs/index.md)
 - [Architecture](docs/architecture.md)
 - [Testing](docs/testing.md)
 - [Detection Patterns](docs/detection-patterns.md)
 - [Troubleshooting](docs/troubleshooting.md)
-- [Roadmap](docs/roadmap.md)
 - [Contributing](CONTRIBUTING.md)

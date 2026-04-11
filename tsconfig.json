@@ -14,5 +14,5 @@
     "noUnusedParameters": true,
     "noUncheckedIndexedAccess": true
   },
-  "include": ["index.ts", "src/**/*.ts"]
+  "include": ["index.ts", "src/**/*.ts", "vitest.config.ts"]
 }

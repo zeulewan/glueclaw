@@ -8,7 +8,7 @@ cd glueclaw
 bash install.sh
 ```
 
-See [docs/installation.md](docs/installation.md) for prerequisites and details.
+See [docs/index.md](docs/index.md) for prerequisites and details.
 
 ## Testing
 

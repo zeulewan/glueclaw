@@ -8,6 +8,11 @@
     "node": ">=18.0.0"
   },
   "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run src/__tests__/unit",
+    "test:integration": "vitest run src/__tests__/integration",
+    "test:e2e": "vitest run src/__tests__/e2e",
     "typecheck": "tsc --noEmit",
     "format": "prettier --check .",
     "format:fix": "prettier --write ."
@@ -23,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.4"
   }
 }
