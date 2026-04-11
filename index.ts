@@ -43,7 +43,7 @@ export default definePluginEntry({
           },
         }),
       },
-      createStreamFn: (ctx) => {
+      createStreamFn: (ctx: { modelId: string; agentDir?: string }) => {
         // Map our friendly names to real claude model IDs
         const modelMap: Record<string, string> = {
           "glueclaw-opus": "claude-opus-4-6",

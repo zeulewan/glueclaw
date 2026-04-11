@@ -67,7 +67,9 @@ openclaw agent --agent main --message "say hi" 2>&1 | tail -1
 # Expected: greeting
 
 # Should fail (raw OpenClaw trigger)
-claude --append-system-prompt "You are a personal assistant running inside OpenClaw." -p "say hi" 2>&1
+claude --append-system-prompt \
+  "You are a personal assistant running inside OpenClaw." \
+  -p "say hi" 2>&1
 # Expected: API Error 400
 ```
 
@@ -86,6 +88,10 @@ GLUECLAW_KEY=local openclaw tui
 ## Workstation deployment
 
 ```bash
-ssh user@your-server "export PATH=\$HOME/.npm-global/bin:\$PATH && export GLUECLAW_KEY=local && openclaw agent --agent main --message 'say banana' 2>&1 | tail -1"
+ssh user@your-server \
+  "export PATH=\$HOME/.npm-global/bin:\$PATH && \
+  export GLUECLAW_KEY=local && \
+  openclaw agent --agent main \
+  --message 'say banana' 2>&1 | tail -1"
 # Expected: banana
 ```

@@ -58,7 +58,7 @@ echo "[3/7] Registering plugin..."
 # Try the official plugin install first
 if ! GLUECLAW_KEY=local openclaw plugins install "$PLUGIN_DIR" --link --dangerously-force-unsafe-install 2>/dev/null; then
   # Fallback: register manually via config commands
-  openclaw config set plugins.load.paths "[\"/$(echo "$PLUGIN_DIR" | sed 's|^/||')\"]" 2>/dev/null || true
+  openclaw config set plugins.load.paths "[\"/${PLUGIN_DIR#/}\"]" 2>/dev/null || true
   openclaw config set plugins.entries.glueclaw '{"enabled":true}' 2>/dev/null || true
   openclaw config set plugins.installs.glueclaw "{\"source\":\"path\",\"sourcePath\":\"$PLUGIN_DIR\",\"installPath\":\"$PLUGIN_DIR\",\"version\":\"1.0.0\"}" 2>/dev/null || true
 fi
@@ -120,6 +120,7 @@ echo "[6/7] Patching gateway for MCP bridge..."
 SERVER_FILE=$(grep -rl "mcp loopback listening" "$OPENCLAW_DIST"/*.js 2>/dev/null | head -1)
 if [ -n "$SERVER_FILE" ] && ! grep -q "__GLUECLAW_MCP" "$SERVER_FILE"; then
   cp "$SERVER_FILE" "${SERVER_FILE}.glueclaw-bak"
+  # shellcheck disable=SC2016
   sedi 's/logDebug(`mcp loopback listening/process.env.__GLUECLAW_MCP_PORT = String(address.port); process.env.__GLUECLAW_MCP_TOKEN = token; logDebug(`mcp loopback listening/' "$SERVER_FILE"
   echo "  Patched $(basename "$SERVER_FILE")"
 else
@@ -134,7 +135,7 @@ openclaw gateway stop 2>/dev/null || true
 sleep 2
 openclaw gateway run --bind loopback --port 18789 --force &>/dev/null &
 echo "  Waiting for gateway..."
-for i in $(seq 1 15); do
+for _ in $(seq 1 15); do
   grep -q "auth" "$HOME/.openclaw/openclaw.json" 2>/dev/null && break
   sleep 1
 done
