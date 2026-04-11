@@ -6,6 +6,7 @@ import {
   unscrubResponse,
   getMcpLoopback,
 } from "../../stream.js";
+import { MODEL_CATALOG } from "../../catalog.js";
 
 describe("buildUsage", () => {
   it("returns zeroed usage when called with undefined", () => {
@@ -243,5 +244,39 @@ describe("getMcpLoopback", () => {
     const result = getMcpLoopback();
     expect(result?.port).toBe(8080);
     expect(typeof result?.port).toBe("number");
+  });
+});
+
+describe("MODEL_CATALOG", () => {
+  it("has exactly 3 entries", () => {
+    expect(MODEL_CATALOG).toHaveLength(3);
+  });
+
+  it("every entry has required fields: id, name, provider, contextWindow", () => {
+    for (const entry of MODEL_CATALOG) {
+      expect(entry.id).toBeTruthy();
+      expect(entry.name).toBeTruthy();
+      expect(entry.provider).toBeTruthy();
+      expect(entry.contextWindow).toBeGreaterThan(0);
+    }
+  });
+
+  it("every entry has input array containing 'text'", () => {
+    for (const entry of MODEL_CATALOG) {
+      expect(entry.input).toEqual(expect.arrayContaining(["text"]));
+    }
+  });
+
+  it("opus and sonnet have reasoning: true", () => {
+    const opus = MODEL_CATALOG.find((m) => m.id.includes("opus"));
+    const sonnet = MODEL_CATALOG.find((m) => m.id.includes("sonnet"));
+    expect(opus?.reasoning).toBe(true);
+    expect(sonnet?.reasoning).toBe(true);
+  });
+
+  it("all provider fields match 'glueclaw'", () => {
+    for (const entry of MODEL_CATALOG) {
+      expect(entry.provider).toBe("glueclaw");
+    }
   });
 });

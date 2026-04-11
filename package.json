@@ -9,6 +9,7 @@
   "files": [
     "index.ts",
     "src/stream.ts",
+    "src/catalog.ts",
     "src/openclaw.d.ts",
     "openclaw.plugin.json",
     "install.sh",

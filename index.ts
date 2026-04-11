@@ -3,6 +3,7 @@ import {
   type OpenClawPluginApi,
 } from "openclaw/plugin-sdk/plugin-entry";
 import { createClaudeCliStreamFn } from "./src/stream.js";
+import { MODEL_CATALOG } from "./src/catalog.js";
 
 const PROVIDER_ID = "glueclaw";
 const PROVIDER_LABEL = "GlueClaw";
@@ -80,28 +81,7 @@ export default definePluginEntry({
         source: AUTH_SOURCE,
         mode: "api-key",
       }),
-      augmentModelCatalog: () => [
-        {
-          id: "glueclaw-opus",
-          name: "GlueClaw Opus",
-          provider: PROVIDER_ID,
-          contextWindow: 1_000_000,
-          reasoning: true,
-        },
-        {
-          id: "glueclaw-sonnet",
-          name: "GlueClaw Sonnet",
-          provider: PROVIDER_ID,
-          contextWindow: 1_000_000,
-          reasoning: true,
-        },
-        {
-          id: "glueclaw-haiku",
-          name: "GlueClaw Haiku",
-          provider: PROVIDER_ID,
-          contextWindow: 200_000,
-        },
-      ],
+      augmentModelCatalog: () => [...MODEL_CATALOG],
     });
   },
 });
