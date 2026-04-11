@@ -1,0 +1,17 @@
+{
+  "env": {
+    "node": true,
+    "es2022": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "rules": {
+    "n/no-missing-import": "off",
+    "n/no-unsupported-features/es-syntax": "off",
+    "n/no-unsupported-features/es-builtins": "off",
+    "n/no-unsupported-features/node-builtins": "off",
+    "no-empty": "off"
+  }
+}

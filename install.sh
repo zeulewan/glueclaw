@@ -9,8 +9,14 @@ echo ""
 
 # --- Preflight ---
 
-command -v openclaw >/dev/null 2>&1 || { echo "Error: openclaw not found. Install: npm install -g openclaw"; exit 1; }
-command -v claude >/dev/null 2>&1 || { echo "Error: claude CLI not found. Install Claude Code first."; exit 1; }
+command -v openclaw >/dev/null 2>&1 || {
+  echo "Error: openclaw not found. Install: npm install -g openclaw"
+  exit 1
+}
+command -v claude >/dev/null 2>&1 || {
+  echo "Error: claude CLI not found. Install Claude Code first."
+  exit 1
+}
 echo "  OpenClaw: $(openclaw --version 2>/dev/null | head -1)"
 echo "  Claude:   $(claude --version 2>/dev/null | head -1)"
 echo ""
@@ -18,7 +24,10 @@ echo ""
 # Find OpenClaw dist
 OPENCLAW_ROOT="$(dirname "$(which openclaw)")/../lib/node_modules/openclaw"
 [ ! -d "$OPENCLAW_ROOT/dist" ] && OPENCLAW_ROOT="$(npm root -g 2>/dev/null)/openclaw"
-[ ! -d "$OPENCLAW_ROOT/dist" ] && { echo "Error: Cannot find OpenClaw dist"; exit 1; }
+[ ! -d "$OPENCLAW_ROOT/dist" ] && {
+  echo "Error: Cannot find OpenClaw dist"
+  exit 1
+}
 OPENCLAW_DIST="$OPENCLAW_ROOT/dist"
 
 # Detect shell config
@@ -48,7 +57,7 @@ cd "$PLUGIN_DIR" && npm install --silent 2>/dev/null
 
 echo "[2/7] Setting up environment..."
 if ! grep -q "GLUECLAW_KEY" "$SHELL_RC" 2>/dev/null; then
-  echo 'export GLUECLAW_KEY=local' >> "$SHELL_RC"
+  echo 'export GLUECLAW_KEY=local' >>"$SHELL_RC"
 fi
 export GLUECLAW_KEY=local
 
@@ -111,7 +120,7 @@ with open('$AUTH_FILE', 'w') as f: json.dump(data, f, indent=2)
 " 2>/dev/null
 else
   # Fresh file
-  echo "{\"profiles\":{\"glueclaw:default\":$GLUECLAW_PROFILE}}" > "$AUTH_FILE"
+  echo "{\"profiles\":{\"glueclaw:default\":$GLUECLAW_PROFILE}}" >"$AUTH_FILE"
 fi
 
 # --- 6. Patch: MCP bridge ---

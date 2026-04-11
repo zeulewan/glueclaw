@@ -36,9 +36,24 @@ export default definePluginEntry({
             baseUrl: "local://glueclaw",
             api: "anthropic-messages",
             models: [
-              { id: "glueclaw-opus", name: "GlueClaw Opus", contextWindow: 1_000_000, maxTokens: 32_000 },
-              { id: "glueclaw-sonnet", name: "GlueClaw Sonnet", contextWindow: 200_000, maxTokens: 16_000 },
-              { id: "glueclaw-haiku", name: "GlueClaw Haiku", contextWindow: 200_000, maxTokens: 8_000 },
+              {
+                id: "glueclaw-opus",
+                name: "GlueClaw Opus",
+                contextWindow: 1_000_000,
+                maxTokens: 32_000,
+              },
+              {
+                id: "glueclaw-sonnet",
+                name: "GlueClaw Sonnet",
+                contextWindow: 200_000,
+                maxTokens: 16_000,
+              },
+              {
+                id: "glueclaw-haiku",
+                name: "GlueClaw Haiku",
+                contextWindow: 200_000,
+                maxTokens: 8_000,
+              },
             ],
           },
         }),
@@ -62,9 +77,26 @@ export default definePluginEntry({
         mode: "api-key",
       }),
       augmentModelCatalog: () => [
-        { id: "glueclaw-opus", name: "GlueClaw Opus", provider: PROVIDER_ID, contextWindow: 1_000_000, reasoning: true },
-        { id: "glueclaw-sonnet", name: "GlueClaw Sonnet", provider: PROVIDER_ID, contextWindow: 200_000, reasoning: true },
-        { id: "glueclaw-haiku", name: "GlueClaw Haiku", provider: PROVIDER_ID, contextWindow: 200_000 },
+        {
+          id: "glueclaw-opus",
+          name: "GlueClaw Opus",
+          provider: PROVIDER_ID,
+          contextWindow: 1_000_000,
+          reasoning: true,
+        },
+        {
+          id: "glueclaw-sonnet",
+          name: "GlueClaw Sonnet",
+          provider: PROVIDER_ID,
+          contextWindow: 200_000,
+          reasoning: true,
+        },
+        {
+          id: "glueclaw-haiku",
+          name: "GlueClaw Haiku",
+          provider: PROVIDER_ID,
+          contextWindow: 200_000,
+        },
       ],
     });
   },

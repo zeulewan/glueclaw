@@ -1,8 +1,7 @@
 # GlueClaw Health Check
 
-Run this prompt daily (or as a cron job) to verify
-GlueClaw still works. If it fails, follow the binary
-search procedure in DETECTION_PATTERNS.md to find and
+Run this prompt daily (or as a cron job) to verify GlueClaw still works. If it
+fails, follow the binary search procedure in DETECTION_PATTERNS.md to find and
 scrub the new trigger.
 
 ## Quick check
@@ -14,8 +13,8 @@ openclaw agent --agent main \
   2>&1 | tail -1
 ```
 
-If you see `pineapple`, it works. If you see
-`API Error: 400`, Anthropic added a new trigger.
+If you see `pineapple`, it works. If you see `API Error: 400`, Anthropic added a
+new trigger.
 
 ## Full health check prompt
 
