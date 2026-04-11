@@ -66,7 +66,11 @@ describe("buildUsage", () => {
 });
 
 describe("buildMsg", () => {
-  const model = { api: "anthropic-messages", provider: "glueclaw", id: "glueclaw-opus" };
+  const model = {
+    api: "anthropic-messages",
+    provider: "glueclaw",
+    id: "glueclaw-opus",
+  };
   const usage = buildUsage();
 
   it("returns correct shape", () => {
@@ -112,7 +116,9 @@ describe("scrubPrompt", () => {
   });
 
   it("replaces reply_to_current", () => {
-    expect(scrubPrompt("action: reply_to_current")).toBe("action: reply_current");
+    expect(scrubPrompt("action: reply_to_current")).toBe(
+      "action: reply_current",
+    );
   });
 
   it("replaces [[reply_to:", () => {
@@ -170,7 +176,9 @@ describe("unscrubResponse", () => {
   });
 
   it("reverses reply_current to reply_to_current", () => {
-    expect(unscrubResponse("action: reply_current")).toBe("action: reply_to_current");
+    expect(unscrubResponse("action: reply_current")).toBe(
+      "action: reply_to_current",
+    );
   });
 
   it("reverses [[reply: to [[reply_to:", () => {

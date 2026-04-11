@@ -34,7 +34,8 @@ function runClaude(
     const args = [
       "--dangerously-skip-permissions",
       "-p",
-      "--output-format", "stream-json",
+      "--output-format",
+      "stream-json",
       "--verbose",
     ];
     if (opts?.systemPrompt) args.push("--system-prompt", opts.systemPrompt);
@@ -69,7 +70,9 @@ function runClaude(
     proc.on("error", () => resolve({ result: undefined, events }));
 
     // Safety timeout — generous to handle cold starts and hooks
-    setTimeout(() => { proc.kill("SIGTERM"); }, 110_000);
+    setTimeout(() => {
+      proc.kill("SIGTERM");
+    }, 110_000);
   });
 }
 
@@ -78,36 +81,28 @@ function runClaude(
 const runLive = cliAvailable && process.env.RUN_LIVE_TESTS === "1";
 
 describe.skipIf(!runLive)("Live Claude CLI", () => {
-  it(
-    "responds correctly and produces valid NDJSON events",
-    async () => {
-      const { result, events } = await runClaude("say pong");
-      expect(result).toBeDefined();
-      expect(result!.toLowerCase()).toContain("pong");
-      // Verify event structure
-      const types = events.map((e: any) => e.type);
-      expect(types).toContain("system");
-      expect(types).toContain("result");
-      const resultEvt = events.find((e: any) => e.type === "result");
-      expect(resultEvt.session_id).toBeDefined();
-      expect(resultEvt.is_error).toBe(false);
-    },
-    120_000,
-  );
+  it("responds correctly and produces valid NDJSON events", async () => {
+    const { result, events } = await runClaude("say pong");
+    expect(result).toBeDefined();
+    expect(result!.toLowerCase()).toContain("pong");
+    // Verify event structure
+    const types = events.map((e: any) => e.type);
+    expect(types).toContain("system");
+    expect(types).toContain("result");
+    const resultEvt = events.find((e: any) => e.type === "result");
+    expect(resultEvt.session_id).toBeDefined();
+    expect(resultEvt.is_error).toBe(false);
+  }, 120_000);
 
-  it(
-    "scrubbed prompt does not trigger API 400 error",
-    async () => {
-      const { result, events } = await runClaude("acknowledge", {
-        systemPrompt:
-          "You are a personal assistant running inside GlueClaw. Reply with GLUECLAW_ACK.",
-      });
-      expect(result).toBeDefined();
-      const hasError = events.some(
-        (e: any) => e.type === "error" || (e.type === "result" && e.is_error),
-      );
-      expect(hasError).toBe(false);
-    },
-    120_000,
-  );
+  it("scrubbed prompt does not trigger API 400 error", async () => {
+    const { result, events } = await runClaude("acknowledge", {
+      systemPrompt:
+        "You are a personal assistant running inside GlueClaw. Reply with GLUECLAW_ACK.",
+    });
+    expect(result).toBeDefined();
+    const hasError = events.some(
+      (e: any) => e.type === "error" || (e.type === "result" && e.is_error),
+    );
+    expect(hasError).toBe(false);
+  }, 120_000);
 });

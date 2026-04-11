@@ -1,11 +1,27 @@
 {
-  "name": "@openclaw/glueclaw-provider",
-  "version": "2026.4.5",
-  "private": true,
+  "name": "@zeulewan/glueclaw-provider",
+  "version": "1.0.0",
   "description": "GlueClaw - Claude CLI subprocess provider for Max subscription",
   "type": "module",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
+  },
+  "files": [
+    "index.ts",
+    "src/stream.ts",
+    "src/openclaw.d.ts",
+    "openclaw.plugin.json",
+    "install.sh",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zeulewan/glueclaw.git"
   },
   "scripts": {
     "test": "vitest run",
@@ -27,7 +43,13 @@
     "@mariozechner/pi-ai": "^0.65.2"
   },
   "devDependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "@semantic-release/git": "^10.0.0",
+    "@semantic-release/github": "^11.0.0",
     "@types/node": "^22.0.0",
+    "prettier": "^3.5.0",
+    "semantic-release": "^24.0.0",
     "typescript": "^5.7.0",
     "vitest": "^4.1.4"
   }

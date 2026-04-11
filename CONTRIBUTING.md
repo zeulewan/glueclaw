@@ -10,6 +10,26 @@ bash install.sh
 
 See [docs/index.md](docs/index.md) for prerequisites and details.
 
+## Commit messages
+
+This project uses [Conventional Commits](https://www.conventionalcommits.org/)
+to automate versioning and changelog generation.
+
+Format: `<type>(<optional scope>): <description>`
+
+| Type    | Version bump  | Example                                  |
+| ------- | ------------- | ---------------------------------------- |
+| `fix`   | Patch (0.0.x) | `fix(stream): handle empty NDJSON lines` |
+| `feat`  | Minor (0.x.0) | `feat: add model selection`              |
+| `feat!` | Major (x.0.0) | `feat!: redesign plugin API`             |
+
+Other types (`chore`, `docs`, `style`, `refactor`, `perf`, `test`, `build`,
+`ci`, `revert`) do not trigger a release unless paired with `BREAKING CHANGE:`
+in the commit body.
+
+PR commit messages are validated by CI — non-conforming commits will fail the
+commitlint check.
+
 ## Testing
 
 See [docs/testing.md](docs/testing.md). At minimum:

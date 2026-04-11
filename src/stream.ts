@@ -101,7 +101,10 @@ export function getMcpLoopback(): { port: number; token: string } | undefined {
 }
 
 /** Write a temporary MCP config file for the claude subprocess. */
-export function writeMcpConfig(port: number): { path: string; cleanup: () => void } {
+export function writeMcpConfig(port: number): {
+  path: string;
+  cleanup: () => void;
+} {
   const dir = join(tmpdir(), `glueclaw-mcp-${randomBytes(8).toString("hex")}`);
   mkdirSync(dir, { recursive: true });
   const configPath = join(dir, "mcp.json");
@@ -259,7 +262,11 @@ export function createClaudeCliStreamFn(opts: {
           if (!ended) {
             proc.kill("SIGTERM");
             setTimeout(() => {
-              try { proc.kill("SIGKILL"); } catch { /* already dead */ }
+              try {
+                proc.kill("SIGKILL");
+              } catch {
+                /* already dead */
+              }
             }, PROCESS_TIMEOUT_MS);
           }
         }, requestTimeout);
@@ -409,7 +416,11 @@ export function createClaudeCliStreamFn(opts: {
           new Promise<void>((r) => setTimeout(r, PROCESS_TIMEOUT_MS)),
         ]);
         // SIGKILL fallback if process didn't exit after SIGTERM
-        try { proc.kill("SIGKILL"); } catch { /* already dead */ }
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          /* already dead */
+        }
         if (!ended) endStream();
       } catch (err) {
         stream.push({

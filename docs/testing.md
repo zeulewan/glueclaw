@@ -16,26 +16,26 @@ RUN_LIVE_TESTS=1 npm run test:e2e  # live CLI + OpenClaw e2e (~30s)
 RUN_LIVE_TESTS=1 npm test          # everything (~32s)
 ```
 
-| Layer | Tests | What it covers |
-|-------|-------|----------------|
-| Unit | 37 | scrubPrompt, unscrubResponse, buildUsage, buildMsg, getMcpLoopback, writeMcpConfig |
-| Integration | 17 | Mock CLI (11 NDJSON scenarios), timeout, stderr capture, concurrency |
-| E2E: OpenClaw | 3 | Plugin registration, provider exposure, agent smoke test |
-| E2E: live CLI | 2 | Real Claude CLI response, scrubbed prompt acceptance |
-| E2E: stream live | 2 | createClaudeCliStreamFn with real CLI + Max plan OAuth, session resume |
+| Layer            | Tests | What it covers                                                                     |
+| ---------------- | ----- | ---------------------------------------------------------------------------------- |
+| Unit             | 37    | scrubPrompt, unscrubResponse, buildUsage, buildMsg, getMcpLoopback, writeMcpConfig |
+| Integration      | 17    | Mock CLI (11 NDJSON scenarios), timeout, stderr capture, concurrency               |
+| E2E: OpenClaw    | 3     | Plugin registration, provider exposure, agent smoke test                           |
+| E2E: live CLI    | 2     | Real Claude CLI response, scrubbed prompt acceptance                               |
+| E2E: stream live | 2     | createClaudeCliStreamFn with real CLI + Max plan OAuth, session resume             |
 
 ### Integration test breakdown
 
-| Test | What it validates |
-|------|-------------------|
-| simple, streaming, assistant | Basic NDJSON event parsing and stream lifecycle |
-| malformed | Malformed NDJSON lines skipped without crash |
-| scrub, scrub-streaming | Detection token unscrubbing in result and delta paths |
-| double-unscrub guard | endStream doesn't re-unscrub already-processed streaming text |
-| empty | Empty CLI output produces "(no response)" fallback |
-| hang + timeout | Request timeout kills hung process, emits error (3s test) |
-| stderr capture | CLI stderr included in error events for diagnostics |
-| 4 concurrency tests | Parallel streams, session map integrity, same-key safety, no cross-contamination |
+| Test                         | What it validates                                                                |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| simple, streaming, assistant | Basic NDJSON event parsing and stream lifecycle                                  |
+| malformed                    | Malformed NDJSON lines skipped without crash                                     |
+| scrub, scrub-streaming       | Detection token unscrubbing in result and delta paths                            |
+| double-unscrub guard         | endStream doesn't re-unscrub already-processed streaming text                    |
+| empty                        | Empty CLI output produces "(no response)" fallback                               |
+| hang + timeout               | Request timeout kills hung process, emits error (3s test)                        |
+| stderr capture               | CLI stderr included in error events for diagnostics                              |
+| 4 concurrency tests          | Parallel streams, session map integrity, same-key safety, no cross-contamination |
 
 ### What the tests prove
 
@@ -57,6 +57,7 @@ openclaw agent --agent main --message "say banana" 2>&1 | tail -n 1
 ### Multi-turn memory
 
 In `openclaw tui`:
+
 1. "remember the word: mango" — expect acknowledgment
 2. "what word did I ask you to remember?" — expect "mango"
 

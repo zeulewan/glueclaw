@@ -8,7 +8,15 @@ Uses the official Claude CLI and scrubs out [Anthropic's detection triggers](doc
 
 ## Install
 
-Requires [OpenClaw](https://docs.openclaw.ai) 2026.4.10+ and [Claude Code](https://claude.ai/claude-code) logged in with Max. Non-destructive, won't touch your existing config or sessions.
+Requires [OpenClaw](https://docs.openclaw.ai) 2026.4.10+, [Claude Code](https://claude.ai/claude-code) logged in with Max, and Node.js 22+. Non-destructive, won't touch your existing config or sessions.
+
+### npm (recommended)
+
+```bash
+npm install @zeulewan/glueclaw-provider && bash node_modules/@zeulewan/glueclaw-provider/install.sh
+```
+
+### git
 
 ```bash
 git clone https://github.com/zeulewan/glueclaw.git && cd glueclaw && bash install.sh
@@ -34,11 +42,11 @@ The only way this breaks is if Anthropic changes how `--system-prompt` or `--out
 
 ## Models
 
-| Model | Claude Model | Context |
-|-------|-------------|---------|
-| `glueclaw/glueclaw-opus` | Opus 4.6 | 1M |
-| `glueclaw/glueclaw-sonnet` | Sonnet 4.6 | 1M |
-| `glueclaw/glueclaw-haiku` | Haiku 4.5 | 200k |
+| Model                      | Claude Model | Context |
+| -------------------------- | ------------ | ------- |
+| `glueclaw/glueclaw-opus`   | Opus 4.6     | 1M      |
+| `glueclaw/glueclaw-sonnet` | Sonnet 4.6   | 1M      |
+| `glueclaw/glueclaw-haiku`  | Haiku 4.5    | 200k    |
 
 Switch in TUI: `/model glueclaw/glueclaw-opus`
 
