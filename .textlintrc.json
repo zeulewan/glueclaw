@@ -1,7 +1,8 @@
 {
   "rules": {
     "terminology": {
-      "exclude": ["git"]
+      "defaultTerms": true,
+      "exclude": ["Git"]
     }
   }
 }

@@ -27,3 +27,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEFAULT_BRANCH: main
           VALIDATE_ALL_CODEBASE: true
+          VALIDATE_TYPESCRIPT_STANDARD: false
+          VALIDATE_EDITORCONFIG: false

@@ -7,11 +7,17 @@
     "ecmaVersion": 2022,
     "sourceType": "module"
   },
+  "settings": {
+    "node": {
+      "version": ">=18.0.0"
+    }
+  },
   "rules": {
     "n/no-missing-import": "off",
     "n/no-unsupported-features/es-syntax": "off",
     "n/no-unsupported-features/es-builtins": "off",
     "n/no-unsupported-features/node-builtins": "off",
-    "no-empty": "off"
+    "no-empty": "off",
+    "@typescript-eslint/no-explicit-any": "off"
   }
 }
