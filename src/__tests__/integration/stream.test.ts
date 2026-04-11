@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { resolve, join } from "node:path";
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { createClaudeCliStreamFn, persistSessions } from "../../stream.js";
+import { createClaudeCliStreamFn } from "../../stream.js";
 
 const MOCK_CLI = resolve(import.meta.dirname, "mock-claude.mjs");
 
