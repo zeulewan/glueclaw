@@ -21,7 +21,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/robinmordasiewicz/glueclaw.git"
+    "url": "https://github.com/zeulewan/glueclaw.git"
   },
   "scripts": {
     "test": "vitest run",

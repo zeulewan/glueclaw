@@ -12,9 +12,18 @@ OpenClaw provider plugin that routes inference through the Claude CLI using a Ma
 
 - [OpenClaw](https://docs.openclaw.ai) 2026.4.10+
 - [Claude Code](https://claude.ai/claude-code) logged in with Max
-- Node.js 18+
+- Node.js 22+
 
 ## Install
+
+### npm (recommended)
+
+```bash
+npm install @zeulewan/glueclaw-provider \
+  && bash node_modules/@zeulewan/glueclaw-provider/install.sh
+```
+
+### git
 
 ```bash
 git clone https://github.com/zeulewan/glueclaw.git \
