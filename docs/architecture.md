@@ -1,3 +1,9 @@
+---
+title: Architecture
+layout: default
+nav_order: 2
+---
+
 # Architecture
 
 OpenClaw provider plugin that spawns Claude CLI subprocesses using Max plan OAuth instead of API keys.

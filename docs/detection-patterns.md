@@ -1,3 +1,9 @@
+---
+title: Detection Patterns
+layout: default
+nav_order: 4
+---
+
 # Detection Patterns
 
 Anthropic uses token/phrase matching to detect OpenClaw system prompts. These

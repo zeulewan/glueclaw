@@ -1,3 +1,9 @@
+---
+title: Testing
+layout: default
+nav_order: 3
+---
+
 # Testing
 
 ## Automated tests

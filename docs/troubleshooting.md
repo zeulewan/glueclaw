@@ -1,3 +1,9 @@
+---
+title: Troubleshooting
+layout: default
+nav_order: 5
+---
+
 # Troubleshooting
 
 ## Zombie claude processes

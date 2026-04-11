@@ -1,5 +1,15 @@
 title: GlueClaw
 description: Claude Max provider for OpenClaw
-remote_theme: pages-themes/hacker@v0.2.0
+remote_theme: just-the-docs/just-the-docs
+
+color_scheme: light
+
+search_enabled: true
+
+aux_links:
+  "GitHub":
+    - "https://github.com/zeulewan/glueclaw"
+aux_links_new_tab: true
+
 plugins:
   - jekyll-remote-theme
