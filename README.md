@@ -1,6 +1,6 @@
 # GlueClaw
 
-Glue Claude back into OpenClaw. **Experimental** - may be buggy.
+Glue Claude back into OpenClaw.
 
 Uses the official Claude CLI and scrubs out [Anthropic's detection triggers](docs/detection-patterns.md) from the system prompt due to [Anthropic not allowing its use](https://iili.io/BuL3tKN.png). Tested with Telegram. As far as I can tell all functions work such as heartbeats.
 
@@ -62,9 +62,4 @@ Uses only official, documented Claude Code CLI flags. No reverse engineering, no
 
 ## Docs
 
-- [Docs](docs/index.md)
-- [Architecture](docs/architecture.md)
-- [Testing](docs/testing.md)
-- [Detection Patterns](docs/detection-patterns.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Contributing](CONTRIBUTING.md)
+https://zeulewan.github.io/glueclaw/
