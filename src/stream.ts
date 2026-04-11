@@ -1,6 +1,12 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  rmSync,
+  renameSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
@@ -9,6 +15,8 @@ import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, Usage, TextContent } from "@mariozechner/pi-ai";
 
 const PROCESS_TIMEOUT_MS = 5000;
+const REQUEST_TIMEOUT_MS = 120_000;
+const MAX_SESSIONS = 1000;
 
 /** Shape of NDJSON stream events from the Claude CLI. */
 interface StreamEventData {
@@ -43,7 +51,9 @@ try {
 
 export function persistSessions(): void {
   try {
-    writeFileSync(SESSION_FILE, JSON.stringify(Object.fromEntries(sessionMap)));
+    const tmp = SESSION_FILE + ".tmp";
+    writeFileSync(tmp, JSON.stringify(Object.fromEntries(sessionMap)));
+    renameSync(tmp, SESSION_FILE); // Atomic on most filesystems
   } catch {
     // Best-effort persistence — non-fatal if disk write fails
   }
@@ -145,18 +155,30 @@ export function unscrubResponse(text: string): string {
     .replace(/\[\[reply:/g, "[[reply_to:");
 }
 
+/** Evict oldest sessions when map exceeds MAX_SESSIONS */
+function evictSessions(): void {
+  while (sessionMap.size > MAX_SESSIONS) {
+    const oldest = sessionMap.keys().next().value;
+    if (oldest !== undefined) sessionMap.delete(oldest);
+    else break;
+  }
+}
+
 export function createClaudeCliStreamFn(opts: {
   claudeBin?: string;
   sessionKey?: string;
   modelOverride?: string;
+  requestTimeoutMs?: number;
 }): StreamFn {
   const claudeBin = opts.claudeBin ?? "claude";
+  const requestTimeout = opts.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
 
   return (model, context, options) => {
     const stream = createAssistantMessageEventStream();
 
     const run = async () => {
       let mcpCleanup: (() => void) | undefined;
+      let stderrBuf = "";
       try {
         // Scrub Anthropic detection triggers (see docs/detection-patterns.md)
         const cleanPrompt = scrubPrompt(context.systemPrompt ?? "");
@@ -224,6 +246,24 @@ export function createClaudeCliStreamFn(opts: {
         if (options?.signal)
           options.signal.addEventListener("abort", () => proc.kill("SIGTERM"));
 
+        // Capture stderr for diagnostics
+        if (proc.stderr) {
+          proc.stderr.on("data", (chunk: Buffer) => {
+            stderrBuf += chunk.toString();
+            if (stderrBuf.length > 4096) stderrBuf = stderrBuf.slice(-4096);
+          });
+        }
+
+        // Request timeout — kill process if it takes too long
+        const requestTimer = setTimeout(() => {
+          if (!ended) {
+            proc.kill("SIGTERM");
+            setTimeout(() => {
+              try { proc.kill("SIGKILL"); } catch { /* already dead */ }
+            }, PROCESS_TIMEOUT_MS);
+          }
+        }, requestTimeout);
+
         const info = {
           api: String(model.api ?? "anthropic-messages"),
           provider: String(model.provider ?? "glueclaw"),
@@ -247,7 +287,8 @@ export function createClaudeCliStreamFn(opts: {
           if (ended) return;
           ended = true;
           // Translate renamed tokens back for the gateway
-          text = unscrubResponse(text);
+          // Skip if streaming deltas already unscrubbed each chunk
+          if (!streamed) text = unscrubResponse(text);
           if (started && !streamed) {
             // Only emit text_end if text wasn't already delivered via streaming deltas
             stream.push({
@@ -283,6 +324,7 @@ export function createClaudeCliStreamFn(opts: {
             const sid = data.session_id;
             if (sid) {
               sessionMap.set(sessionKey, sid);
+              evictSessions();
               persistSessions();
             }
             continue;
@@ -336,6 +378,7 @@ export function createClaudeCliStreamFn(opts: {
             const sid = data.session_id;
             if (sid) {
               sessionMap.set(sessionKey, sid);
+              evictSessions();
               persistSessions();
             }
             // Only use result text if nothing came through streaming or assistant
@@ -360,10 +403,13 @@ export function createClaudeCliStreamFn(opts: {
         }
 
         // Wait for process exit with timeout
+        clearTimeout(requestTimer);
         await Promise.race([
           new Promise<void>((r) => proc.on("close", () => r())),
           new Promise<void>((r) => setTimeout(r, PROCESS_TIMEOUT_MS)),
         ]);
+        // SIGKILL fallback if process didn't exit after SIGTERM
+        try { proc.kill("SIGKILL"); } catch { /* already dead */ }
         if (!ended) endStream();
       } catch (err) {
         stream.push({
@@ -375,7 +421,7 @@ export function createClaudeCliStreamFn(opts: {
               provider: "glueclaw",
               id: String(model.id),
             },
-            `Error: ${err instanceof Error ? err.message : String(err)}`,
+            `Error: ${err instanceof Error ? err.message : String(err)}${stderrBuf ? "\nstderr: " + stderrBuf.trim() : ""}`,
             buildUsage(),
           ),
         });

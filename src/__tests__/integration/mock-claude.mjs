@@ -3,7 +3,8 @@
  * Mock Claude CLI — outputs NDJSON events that mimic the real Claude CLI.
  * Controlled via environment variables:
  *   MOCK_SCENARIO: "simple" | "streaming" | "assistant" | "malformed" | "scrub" |
- *                  "scrub-streaming" | "error" | "empty" | "args-echo"
+ *                  "scrub-streaming" | "error" | "empty" | "args-echo" |
+ *                  "hang" | "stderr"
  *   MOCK_SESSION_ID: session ID to emit (default: "test-session-123")
  */
 
@@ -113,6 +114,19 @@ switch (scenario) {
       result: JSON.stringify(process.argv.slice(2)),
       usage: { input_tokens: 1, output_tokens: 1 },
     });
+    break;
+
+  case "hang":
+    // Emit init then hang forever — never emits result
+    emit({ type: "system", subtype: "init", session_id: sessionId });
+    // Keep process alive indefinitely
+    setInterval(() => {}, 60_000);
+    break;
+
+  case "stderr":
+    // Emit error text to stderr then exit non-zero
+    process.stderr.write("Error: authentication failed\n");
+    process.exit(1);
     break;
 
   default:

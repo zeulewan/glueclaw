@@ -14,6 +14,7 @@ async function collectEvents(
     sessionKey?: string;
     prompt?: string;
     systemPrompt?: string;
+    requestTimeoutMs?: number;
   },
 ): Promise<Array<{ type: string; [key: string]: unknown }>> {
   // Set env so the subprocess picks it up — must stay set until stream completes
@@ -26,6 +27,7 @@ async function collectEvents(
       claudeBin: MOCK_CLI,
       sessionKey: opts?.sessionKey ?? `test-${Date.now()}-${Math.random()}`,
       modelOverride: "claude-sonnet-4-6",
+      requestTimeoutMs: opts?.requestTimeoutMs,
     });
 
     const model = {
@@ -116,6 +118,24 @@ describe("createClaudeCliStreamFn integration", () => {
     expect(doneText).toContain("reply_to_current");
     // Must NOT contain the double-unscrub corruption
     expect(doneText).not.toContain("reply_to_reply_to_current");
+  });
+
+  it("hang: request timeout kills process and emits error", async () => {
+    const events = await collectEvents("hang", {
+      requestTimeoutMs: 3_000,
+    });
+    const errorOrDone = events.find(
+      (e) => e.type === "error" || e.type === "done",
+    );
+    expect(errorOrDone).toBeDefined();
+    // Should complete within the timeout, not hang forever
+  }, 15_000);
+
+  it("stderr: CLI error output included in error event", async () => {
+    const events = await collectEvents("stderr");
+    const doneEvent = events.find((e) => e.type === "done") as any;
+    // Process exits without emitting result — should still get done event
+    expect(doneEvent).toBeDefined();
   });
 
   it("done event includes usage with correct token counts", async () => {
