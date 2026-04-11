@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # GlueClaw installer — Claude Max for OpenClaw
 #
 # Prerequisites: openclaw, claude CLI, node/npm
@@ -19,7 +19,6 @@ warn() {
   echo "  Warning: $1" >&2
 }
 
-# shellcheck disable=SC3043
 oc_config() {
   _oc_path="$1"
   _oc_val="$2"
@@ -31,10 +30,11 @@ oc_config() {
 }
 
 sedi() {
-  case "$(uname)" in
-  Darwin*) sed -i '' "$@" ;;
-  *) sed -i "$@" ;;
-  esac
+  if [[ "$(uname)" == "Darwin" ]]; then
+    sed -i '' "$@"
+  else
+    sed -i "$@"
+  fi
 }
 
 ensure_line() {

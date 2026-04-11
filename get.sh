@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # One-line bootstrap for GlueClaw — clones repo then runs install.sh
 set -e
 command -v git >/dev/null 2>&1 || {
@@ -15,4 +15,4 @@ if [ -d "$DEST" ]; then
 else
   git clone -q https://github.com/zeulewan/glueclaw.git "$DEST"
 fi
-cd "$DEST" && sh install.sh
+cd "$DEST" && bash install.sh
