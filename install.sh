@@ -37,6 +37,10 @@ sedi() {
   fi
 }
 
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "$1 not found. $2"
+}
+
 ensure_line() {
   _el_file="$1"
   _el_pattern="$2"
@@ -83,10 +87,38 @@ echo ""
 
 # --- Preflight ---
 
-command -v openclaw >/dev/null 2>&1 || die "openclaw not found. Install: npm install -g openclaw"
-command -v claude >/dev/null 2>&1 || die "claude CLI not found. Install Claude Code first."
-echo "  OpenClaw: $(openclaw --version 2>/dev/null | head -n 1)"
-echo "  Claude:   $(claude --version 2>/dev/null | head -n 1)"
+require_cmd openclaw "Install: npm install -g openclaw"
+require_cmd claude "Install Claude Code first."
+
+OC_VERSION="$(openclaw --version 2>/dev/null | head -n 1)"
+CLAUDE_VERSION="$(claude --version 2>/dev/null | head -n 1)"
+echo "  OpenClaw: $OC_VERSION"
+echo "  Claude:   $CLAUDE_VERSION"
+
+# Verify OpenClaw >= 2026.4.10 (plugin allowlist fix)
+OC_VER_NUM="$(echo "$OC_VERSION" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n 1)"
+if [ -n "$OC_VER_NUM" ]; then
+  OC_MAJOR="$(echo "$OC_VER_NUM" | cut -d. -f1)"
+  OC_MINOR="$(echo "$OC_VER_NUM" | cut -d. -f2)"
+  OC_PATCH="$(echo "$OC_VER_NUM" | cut -d. -f3)"
+  if [ "$OC_MAJOR" -lt 2026 ] 2>/dev/null ||
+     { [ "$OC_MAJOR" -eq 2026 ] && [ "$OC_MINOR" -lt 4 ]; } 2>/dev/null ||
+     { [ "$OC_MAJOR" -eq 2026 ] && [ "$OC_MINOR" -eq 4 ] && [ "$OC_PATCH" -lt 10 ]; } 2>/dev/null; then
+    die "OpenClaw 2026.4.10+ required (found $OC_VER_NUM)"
+  fi
+fi
+
+# Verify Claude CLI is authenticated
+CLAUDE_AUTH="$(claude auth status 2>/dev/null || true)"
+if echo "$CLAUDE_AUTH" | grep -q '"loggedIn": *true'; then
+  if echo "$CLAUDE_AUTH" | grep -q '"subscriptionType": *"max"'; then
+    echo "  Auth:     Max plan"
+  else
+    warn "Claude CLI is not on Max plan — GlueClaw may not work correctly"
+  fi
+else
+  die "Claude CLI not authenticated. Run: claude auth login"
+fi
 echo ""
 
 # Find OpenClaw dist
@@ -109,10 +141,18 @@ fi
 # --- Cleanup trap ---
 
 GW_PID=""
+GW_LOG=""
+BACKUP_FILE=""
 cleanup() {
+  # Restore MCP patch backup if script failed mid-patch
+  if [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
+    mv "$BACKUP_FILE" "${BACKUP_FILE%.glueclaw-bak}" 2>/dev/null || true
+    echo "  Restored backup: $(basename "$BACKUP_FILE")" >&2
+  fi
   if [ -n "$GW_PID" ] && kill -0 "$GW_PID" 2>/dev/null; then
     kill "$GW_PID" 2>/dev/null || true
   fi
+  rm -f "$GW_LOG" 2>/dev/null || true
 }
 trap cleanup INT TERM
 
@@ -131,8 +171,11 @@ export GLUECLAW_KEY=local
 # --- 3. Plugin registration ---
 
 echo "[3/7] Registering plugin..."
-# Try the official plugin install first
-if ! GLUECLAW_KEY=local openclaw plugins install "$PLUGIN_DIR" --link --dangerously-force-unsafe-install 2>/dev/null; then
+# GlueClaw is on OpenClaw's official safe plugin list. Try standard install first,
+# fall back to --dangerously-force-unsafe-install for older OpenClaw versions,
+# then manual config as last resort.
+if ! GLUECLAW_KEY=local openclaw plugins install "$PLUGIN_DIR" --link 2>/dev/null &&
+   ! GLUECLAW_KEY=local openclaw plugins install "$PLUGIN_DIR" --link --dangerously-force-unsafe-install 2>/dev/null; then
   # Fallback: register manually via config commands
   oc_config plugins.load.paths "[\"/${PLUGIN_DIR#/}\"]" || true
   oc_config plugins.entries.glueclaw '{"enabled":true}' || true
@@ -142,19 +185,25 @@ fi
 # --- 4. Model config ---
 
 echo "[4/7] Configuring models..."
+# These two are fatal — without them, nothing works
 oc_config models.providers.glueclaw \
-  '{"baseUrl":"local://glueclaw","models":[{"id":"glueclaw-opus","name":"GlueClaw Opus","contextWindow":1000000},{"id":"glueclaw-sonnet","name":"GlueClaw Sonnet","contextWindow":200000},{"id":"glueclaw-haiku","name":"GlueClaw Haiku","contextWindow":200000}]}'
-# Suppress not-found: key may not exist yet
-oc_config gateway.mode local
-# Only set default model if not already configured
+  '{"baseUrl":"local://glueclaw","models":[{"id":"glueclaw-opus","name":"GlueClaw Opus","contextWindow":1000000},{"id":"glueclaw-sonnet","name":"GlueClaw Sonnet","contextWindow":200000},{"id":"glueclaw-haiku","name":"GlueClaw Haiku","contextWindow":200000}]}' \
+  || die "Failed to configure models"
+oc_config gateway.mode local || die "Failed to set gateway mode"
+# Default model — warn only, user can set manually
 if ! grep -q "agents" "$HOME/.openclaw/openclaw.json" 2>/dev/null || grep -q '"model": null' "$HOME/.openclaw/openclaw.json" 2>/dev/null; then
-  oc_config agents.defaults.model glueclaw/glueclaw-sonnet
-  echo "  Default model set to glueclaw/glueclaw-sonnet"
+  if oc_config agents.defaults.model glueclaw/glueclaw-sonnet; then
+    echo "  Default model set to glueclaw/glueclaw-sonnet"
+  else
+    warn "Could not set default model. Set manually: /model glueclaw/glueclaw-sonnet"
+  fi
 else
   echo "  Keeping existing default model (switch with: /model glueclaw/glueclaw-sonnet)"
 fi
+# Gateway tools — warn only, tools are optional
 oc_config gateway.tools.allow \
-  '["sessions_spawn","sessions_send","cron","gateway","nodes"]'
+  '["sessions_spawn","sessions_send","cron","gateway","nodes"]' \
+  || warn "Could not set gateway tools allow list"
 
 # --- 5. Auth profile ---
 
@@ -167,13 +216,17 @@ write_auth_profile "$AUTH_FILE"
 # --- 6. Patch: MCP bridge ---
 
 echo "[6/7] Patching gateway for MCP bridge..."
-# Suppress not-found: glob may not match any .js files
 SERVER_FILE=$(grep -rl "mcp loopback listening" "$OPENCLAW_DIST"/*.js 2>/dev/null | head -n 1)
-if [ -n "$SERVER_FILE" ] && ! grep -q "__GLUECLAW_MCP" "$SERVER_FILE"; then
+[ -z "$SERVER_FILE" ] && die "Cannot find MCP loopback in OpenClaw dist — incompatible version?"
+if ! grep -q "__GLUECLAW_MCP" "$SERVER_FILE"; then
   cp "$SERVER_FILE" "${SERVER_FILE}.glueclaw-bak" || die "Cannot backup $SERVER_FILE"
+  BACKUP_FILE="${SERVER_FILE}.glueclaw-bak"
   # shellcheck disable=SC2016
   sedi 's/logDebug(`mcp loopback listening/process.env.__GLUECLAW_MCP_PORT = String(address.port); process.env.__GLUECLAW_MCP_TOKEN = token; logDebug(`mcp loopback listening/' "$SERVER_FILE" ||
     die "Failed to patch $SERVER_FILE"
+  # Validate the patch actually applied
+  grep -q "__GLUECLAW_MCP_PORT" "$SERVER_FILE" || die "MCP patch did not apply — sed replacement failed"
+  BACKUP_FILE=""  # Patch succeeded, don't restore on cleanup
   echo "  Patched $(basename "$SERVER_FILE")"
 else
   echo "  Already patched"
@@ -182,36 +235,48 @@ fi
 # --- 7. Restart gateway ---
 
 echo "[7/7] Starting gateway..."
+# Stop any existing gateway first
 pkill -f "openclaw.*gateway" 2>/dev/null || true
-# Suppress exit code: stop may fail if not running
 openclaw gateway stop 2>/dev/null || true
 sleep 2
 
-# Check port is free before binding
-if command -v lsof >/dev/null 2>&1; then
-  if lsof -i :18789 >/dev/null 2>&1; then
-    warn "Port 18789 still in use, gateway may fail to start"
-  fi
+# Verify port is free after cleanup
+if command -v lsof >/dev/null 2>&1 && lsof -i :18789 >/dev/null 2>&1; then
+  die "Port 18789 still in use after stopping gateway. Free it manually."
 fi
 
-openclaw gateway run --bind loopback --port 18789 --force >/dev/null 2>&1 &
+GW_LOG="$(mktemp /tmp/glueclaw-gw-XXXXXX.log)"
+openclaw gateway run --bind loopback --port 18789 --force >"$GW_LOG" 2>&1 &
 GW_PID=$!
 echo "  Waiting for gateway..."
 
 _i=0
-while [ "$_i" -lt 20 ]; do
-  # Check gateway process is still alive
+while [ "$_i" -lt 30 ]; do
   if ! kill -0 "$GW_PID" 2>/dev/null; then
-    die "Gateway exited unexpectedly"
+    echo "  Gateway stderr:" >&2
+    cat "$GW_LOG" >&2 2>/dev/null || true
+    die "Gateway exited unexpectedly (see output above)"
   fi
-  grep -q '"glueclaw:default"' "$HOME/.openclaw/openclaw.json" 2>/dev/null && break
+  # Check if gateway is listening on the port
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -i :18789 >/dev/null 2>&1 && break
+  elif command -v ss >/dev/null 2>&1; then
+    ss -tlnp 2>/dev/null | grep -q ":18789 " && break
+  else
+    # Fallback: check config file for auth profile
+    grep -q '"glueclaw:default"' "$HOME/.openclaw/openclaw.json" 2>/dev/null && break
+  fi
   sleep 1
   _i=$((_i + 1))
 done
 
-if ! grep -q '"glueclaw:default"' "$HOME/.openclaw/openclaw.json" 2>/dev/null; then
-  warn "Gateway may not be ready (timed out after 20s)"
+if [ "$_i" -ge 30 ]; then
+  echo "  Gateway log:" >&2
+  cat "$GW_LOG" >&2 2>/dev/null || true
+  die "Gateway startup timed out after 30s (see log above)"
 fi
+rm -f "$GW_LOG" 2>/dev/null || true
+GW_LOG=""
 
 # Gateway started successfully — don't kill it on exit
 GW_PID=""
