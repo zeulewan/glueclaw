@@ -108,6 +108,16 @@ describe("createClaudeCliStreamFn integration", () => {
     expect(fullText).toContain("[[reply_to:");
   });
 
+  it("scrub-streaming: done event text is not double-unscrubbed", async () => {
+    const events = await collectEvents("scrub-streaming");
+    const doneEvent = events.find((e) => e.type === "done") as any;
+    const doneText = doneEvent.message.content[0].text;
+    // Must contain the correctly unscrubbed token
+    expect(doneText).toContain("reply_to_current");
+    // Must NOT contain the double-unscrub corruption
+    expect(doneText).not.toContain("reply_to_reply_to_current");
+  });
+
   it("done event includes usage with correct token counts", async () => {
     const events = await collectEvents("simple");
     const doneEvent = events.find((e) => e.type === "done");
