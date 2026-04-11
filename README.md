@@ -58,7 +58,7 @@ Switch in TUI: `/model glueclaw/glueclaw-opus`
 
 ## Disclaimer
 
-Uses only official, documented Claude Code CLI flags. No reverse engineering, no credential extraction, no API spoofing. Use at your own risk. Not affiliated with or endorsed by Anthropic or OpenClaw.
+Uses only official, documented Claude Code CLI flags. No reverse engineering, no credential extraction, no API spoofing. Use at your own risk. Not affiliated with Anthropic. Compatible with OpenClaw's [plugin allowlist system](https://github.com/openclaw/openclaw/commit/dc008f9).
 
 ## Docs
 
