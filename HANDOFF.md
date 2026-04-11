@@ -1,8 +1,8 @@
 # Handoff — GlueClaw Test Suite
 
 **Date:** 2026-04-11
-**Last commit:** `8fabb34` on `main`
-**Status:** 50 tests passing, 2 skipped. Needs Max plan validation.
+**Last commit:** `5f72015` on `main`
+**Status:** 54 tests passing, 0 skipped. Max plan validation complete.
 
 ---
 
@@ -31,7 +31,8 @@ src/__tests__/
 │   └── stream.test.ts            # 10 tests — createClaudeCliStreamFn with mock subprocess
 └── e2e/
     ├── openclaw.test.ts           # 3 tests  — plugin registration, provider, agent smoke
-    └── live-cli.test.ts           # 2 tests  — real Claude CLI (opt-in: RUN_LIVE_TESTS=1)
+    ├── live-cli.test.ts           # 2 tests  — real Claude CLI (opt-in: RUN_LIVE_TESTS=1)
+    └── stream-live.test.ts        # 2 tests  — createClaudeCliStreamFn with real CLI + Max plan auth
 ```
 
 ### Config files created/modified
@@ -42,7 +43,7 @@ src/__tests__/
 
 ---
 
-## The auth gap — why this matters
+## The auth gap — RESOLVED
 
 GlueClaw is designed for **Claude Max plan** users. The key design decision is on `src/stream.ts:200`:
 
@@ -52,22 +53,21 @@ delete env.ANTHROPIC_API_KEY;      // ← Forces CLI to use Max plan OAuth
 delete env.ANTHROPIC_API_KEY_OLD;
 ```
 
-This session ran on a corporate Anthropic API key proxied through LiteLLM. That means:
+**Validated on 2026-04-11** on an Azure VM with Claude CLI authenticated via Max plan OAuth (`subscriptionType: "max"`, `apiKeySource: "none"`).
 
 | Test layer | Auth used | Tests `createClaudeCliStreamFn`? | Validated? |
 |---|---|---|---|
 | Unit (37) | None needed | No (pure functions) | Yes |
 | Integration (10) | None (mock CLI) | Yes, with mock subprocess | Yes |
-| OpenClaw E2E (3) | OpenClaw default | Indirectly | Yes |
-| Live CLI E2E (2) | Direct `claude` call, API key intact | No, bypasses stream function | Partially |
+| OpenClaw E2E (3) | OpenClaw + GlueClaw plugin | Indirectly via gateway | Yes |
+| Live CLI E2E (2) | Direct `claude` call, Max plan OAuth | No, bypasses stream function | Yes |
+| Stream Live E2E (2) | `createClaudeCliStreamFn`, Max plan OAuth | Yes, full production path | Yes |
 
-**The untested path:** `createClaudeCliStreamFn` → real Claude CLI → real response. This path deletes `ANTHROPIC_API_KEY` from the subprocess env, which:
-- **On Max plan:** Correct — CLI uses OAuth, works fine
-- **On API key auth:** Breaks — CLI has no auth, returns "not logged in"
+The production auth path (`createClaudeCliStreamFn` → real Claude CLI → Max plan OAuth → response) is now tested, including session resume across calls.
 
 ---
 
-## What to do next (on a Max plan workstation)
+## Reproducing the full test run
 
 ### 1. Clone and install
 
@@ -77,59 +77,30 @@ cd glueclaw
 npm install
 ```
 
-### 2. Verify existing tests pass
+### 2. Run all tests (unit + integration, no auth needed)
 
 ```bash
-npm test                    # Should get 50 pass, 2 skipped (~15s)
-npm run typecheck           # Should pass clean
+npm test                    # 49 pass, 5 skipped (~1s)
+npm run typecheck           # Pass clean
 ```
 
-### 3. Run live CLI tests
+### 3. Run live tests (requires Claude CLI authenticated with Max plan)
 
 ```bash
-RUN_LIVE_TESTS=1 npm run test:e2e
+RUN_LIVE_TESTS=1 npm run test:e2e    # 4 live + 3 openclaw (if installed)
 ```
 
-These 2 tests call the real Claude CLI directly (not through `createClaudeCliStreamFn`). They should work on Max plan since the CLI uses OAuth natively.
-
-### 4. Add the missing end-to-end test
-
-Create a test that exercises the full production path:
-
-```typescript
-// src/__tests__/e2e/stream-live.test.ts
-import { createClaudeCliStreamFn } from "../../stream.js";
-
-it("createClaudeCliStreamFn produces response via Max plan auth", async () => {
-  const streamFn = createClaudeCliStreamFn({
-    sessionKey: `e2e-max-${Date.now()}`,
-  });
-  const stream = await streamFn(model, context, {});
-  // ... collect events, verify response
-});
-```
-
-This test will only pass on Max plan because `createClaudeCliStreamFn` deletes `ANTHROPIC_API_KEY`. This is the critical test that validates the production auth path.
-
-### 5. Test session resume (multi-turn memory)
-
-```typescript
-it("resumes session across calls", async () => {
-  const key = `e2e-resume-${Date.now()}`;
-  // Call 1: "remember the word mango"
-  // Call 2 with same key: "what word did I ask you to remember?"
-  // Verify the second call uses --resume and returns "mango"
-});
-```
-
-### 6. Install and test via OpenClaw
+### 4. Full suite with OpenClaw installed
 
 ```bash
+npm install -g openclaw
 bash install.sh
-export GLUECLAW_KEY=local
-openclaw agent --agent main --message "say pong" 2>&1 | tail -1
-# Expected: pong
+RUN_LIVE_TESTS=1 npm test            # 54 pass, 0 skipped
 ```
+
+### OpenClaw compatibility
+
+OpenClaw 2026.4.10+ includes the plugin auto-enable allowlist fix (openclaw/openclaw@dc008f9) that ensures GlueClaw is properly allowlisted when `plugins.allow` is set.
 
 ---
 
