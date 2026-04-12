@@ -356,14 +356,46 @@ export function createClaudeCliStreamFn(opts: {
             continue;
           }
 
-          // Complete assistant message - only use if we didn't get streaming deltas
+          // Assistant message — may contain tool_use and/or text content blocks
           if (type === "assistant") {
-            if (!started) {
-              const content = data.message?.content;
-              if (content) {
+            const content = data.message?.content;
+            if (content) {
+              // Emit tool call events for any tool_use blocks
+              for (const block of content) {
+                if (block.type === "tool_use") {
+                  const b = block as {
+                    type: string;
+                    id: string;
+                    name: string;
+                    input: Record<string, unknown>;
+                  };
+                  startStream();
+                  const toolCall = {
+                    type: "toolCall" as const,
+                    id: b.id,
+                    name: b.name,
+                    arguments: (b.input ?? {}) as Record<string, any>,
+                  };
+                  stream.push({
+                    type: "toolcall_start",
+                    contentIndex: 0,
+                    toolName: b.name,
+                    partial: buildMsg(info, text, buildUsage()),
+                  } as any);
+                  stream.push({
+                    type: "toolcall_end",
+                    contentIndex: 0,
+                    toolCall,
+                    partial: buildMsg(info, text, buildUsage()),
+                  });
+                }
+              }
+
+              // Handle text blocks (only if we haven't streamed via deltas)
+              if (!streamed) {
                 const textBlocks = content
-                  .filter((b) => b.type === "text" && b.text)
-                  .map((b) => b.text ?? "");
+                  .filter((b: any) => b.type === "text" && b.text)
+                  .map((b: any) => b.text ?? "");
                 if (textBlocks.length > 0) {
                   const fullText = textBlocks.join("\n");
                   startStream();

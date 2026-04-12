@@ -176,6 +176,46 @@ describe("createClaudeCliStreamFn integration", () => {
   });
 });
 
+describe("tool activity indicators", () => {
+  it("tool-use scenario: emits toolcall_start and toolcall_end events", async () => {
+    const events = await collectEvents("tool-use");
+    const types = events.map((e) => e.type);
+    expect(types).toContain("toolcall_start");
+    expect(types).toContain("toolcall_end");
+  });
+
+  it("tool-use scenario: toolcall_start has tool name", async () => {
+    const events = await collectEvents("tool-use");
+    const start = events.find((e) => e.type === "toolcall_start");
+    expect(start).toBeDefined();
+    expect((start as any).toolName).toBe("Bash");
+  });
+
+  it("tool-use scenario: text after tool use is captured in done event", async () => {
+    const events = await collectEvents("tool-use");
+    const done = events.find((e) => e.type === "done");
+    expect(done).toBeDefined();
+    const msg = (done as any).message;
+    const text = msg?.content?.find((c: any) => c.type === "text")?.text;
+    expect(text).toContain("Found 2 files");
+  });
+
+  it("multi-tool scenario: emits multiple toolcall_start/end pairs", async () => {
+    const events = await collectEvents("multi-tool");
+    const starts = events.filter((e) => e.type === "toolcall_start");
+    const ends = events.filter((e) => e.type === "toolcall_end");
+    expect(starts.length).toBe(2);
+    expect(ends.length).toBe(2);
+  });
+
+  it("multi-tool scenario: tool names are correct", async () => {
+    const events = await collectEvents("multi-tool");
+    const starts = events.filter((e) => e.type === "toolcall_start");
+    expect((starts[0] as any).toolName).toBe("Read");
+    expect((starts[1] as any).toolName).toBe("Bash");
+  });
+});
+
 /**
  * Launch a stream and collect all events. Unlike collectEvents(), this does
  * NOT set process.env.MOCK_SCENARIO — the caller must set it once before
