@@ -129,6 +129,119 @@ switch (scenario) {
     process.exit(1);
     break;
 
+  case "tool-use":
+    emit({ type: "system", subtype: "init", session_id: sessionId });
+    emit({
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_mock_001",
+            name: "Bash",
+            input: { command: "ls /tmp" },
+          },
+        ],
+      },
+    });
+    emit({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          {
+            tool_use_id: "toolu_mock_001",
+            type: "tool_result",
+            content: "file1\nfile2",
+            is_error: false,
+          },
+        ],
+      },
+    });
+    emit({
+      type: "assistant",
+      message: {
+        content: [{ type: "text", text: "Found 2 files in /tmp." }],
+      },
+    });
+    emit({
+      type: "result",
+      session_id: sessionId,
+      result: "Found 2 files in /tmp.",
+      usage: { input_tokens: 20, output_tokens: 15 },
+    });
+    break;
+
+  case "multi-tool":
+    emit({ type: "system", subtype: "init", session_id: sessionId });
+    emit({
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_mock_010",
+            name: "Read",
+            input: { file_path: "/tmp/a.txt" },
+          },
+        ],
+      },
+    });
+    emit({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          {
+            tool_use_id: "toolu_mock_010",
+            type: "tool_result",
+            content: "hello",
+            is_error: false,
+          },
+        ],
+      },
+    });
+    emit({
+      type: "assistant",
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "toolu_mock_011",
+            name: "Bash",
+            input: { command: "echo world" },
+          },
+        ],
+      },
+    });
+    emit({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          {
+            tool_use_id: "toolu_mock_011",
+            type: "tool_result",
+            content: "world",
+            is_error: false,
+          },
+        ],
+      },
+    });
+    emit({
+      type: "assistant",
+      message: {
+        content: [{ type: "text", text: "Done with both tools." }],
+      },
+    });
+    emit({
+      type: "result",
+      session_id: sessionId,
+      result: "Done with both tools.",
+      usage: { input_tokens: 30, output_tokens: 20 },
+    });
+    break;
+
   case "healthcheck": {
     // Simulate Anthropic detection: reject if system prompt contains HEALTHCHECK_REJECT_LINE
     const spIdx = process.argv.indexOf("--system-prompt");
