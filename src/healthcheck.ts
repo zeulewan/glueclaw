@@ -52,11 +52,14 @@ export async function runHealthcheck(opts: {
     return new Promise((resolve) => {
       const env = { ...process.env, MOCK_SCENARIO: scenario };
       const args = [
-        "--system-prompt",
-        prompt,
+        "--dangerously-skip-permissions",
+        "-p",
         "--output-format",
         "stream-json",
-        "-p",
+        "--system-prompt",
+        prompt,
+        "--model",
+        "claude-sonnet-4-6",
         "say pong",
       ];
       const proc = spawn(claudeBin, args, {
