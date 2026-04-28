@@ -5,6 +5,7 @@ import {
 } from "openclaw/plugin-sdk/plugin-entry";
 import { createClaudeCliStreamFn } from "./src/stream.js";
 import { MODEL_CATALOG } from "./src/catalog.js";
+import { resolveSessionKey } from "./src/session-key.js";
 
 const PROVIDER_ID = "glueclaw";
 const PROVIDER_LABEL = "GlueClaw";
@@ -81,11 +82,16 @@ export default definePluginEntry({
           },
         }),
       },
-      createStreamFn: (ctx: { modelId: string; agentDir?: string }) => {
+      createStreamFn: (ctx: {
+        modelId: string;
+        agentDir?: string;
+        sessionId?: string;
+        sessionKey?: string;
+      }) => {
         const realModel = MODEL_MAP[ctx.modelId] ?? ctx.modelId;
         const agentId = ctx.agentDir ? basename(ctx.agentDir) : undefined;
         return createClaudeCliStreamFn({
-          sessionKey: ctx.agentDir ?? "default",
+          sessionKey: resolveSessionKey(ctx),
           agentId,
           modelOverride: realModel,
           requestTimeoutMs: resolveRequestTimeoutMs(),
