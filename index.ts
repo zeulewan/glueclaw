@@ -18,6 +18,17 @@ const MODEL_MAP: Readonly<Record<string, string>> = {
   "glueclaw-haiku": "claude-haiku-4-5",
 };
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+
+function resolveRequestTimeoutMs(): number {
+  const raw = process.env.GLUECLAW_REQUEST_TIMEOUT_MS;
+  if (raw === undefined || raw === "") return DEFAULT_REQUEST_TIMEOUT_MS;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0)
+    return DEFAULT_REQUEST_TIMEOUT_MS;
+  return parsed;
+}
+
 export default definePluginEntry({
   register(api: OpenClawPluginApi): void {
     const authProfile = () =>
@@ -74,6 +85,7 @@ export default definePluginEntry({
         return createClaudeCliStreamFn({
           sessionKey: ctx.agentDir ?? "default",
           modelOverride: realModel,
+          requestTimeoutMs: resolveRequestTimeoutMs(),
         });
       },
       resolveSyntheticAuth: () => ({
