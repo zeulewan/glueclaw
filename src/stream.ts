@@ -170,6 +170,7 @@ function evictSessions(): void {
 export function createClaudeCliStreamFn(opts: {
   claudeBin?: string;
   sessionKey?: string;
+  agentId?: string;
   modelOverride?: string;
   requestTimeoutMs?: number;
 }): StreamFn {
@@ -194,14 +195,17 @@ export function createClaudeCliStreamFn(opts: {
           "--verbose",
           "--include-partial-messages",
         ];
-        // Resume session for multi-turn conversation memory
+        // Resume session for multi-turn conversation memory.
+        // Always re-inject the system prompt — on resumptions the CLI would
+        // otherwise stick to whatever identity was used on the first turn,
+        // leaving no way for callers to reinforce or correct an agent's
+        // identity across turns.
         const sessionKey = `glueclaw:${opts.sessionKey ?? "default"}`;
         const existingSessionId = sessionMap.get(sessionKey);
         if (existingSessionId) {
           args.push("--resume", existingSessionId);
-        } else {
-          if (cleanPrompt) args.push("--system-prompt", cleanPrompt);
         }
+        if (cleanPrompt) args.push("--system-prompt", cleanPrompt);
         if (resolvedModel) args.push("--model", resolvedModel);
 
         // Debug: log args for resume troubleshooting
@@ -233,7 +237,7 @@ export function createClaudeCliStreamFn(opts: {
           args.push("--strict-mcp-config", "--mcp-config", mcp.path);
           env.OPENCLAW_MCP_TOKEN = loopback.token;
           env.OPENCLAW_MCP_SESSION_KEY = opts.sessionKey ?? "";
-          env.OPENCLAW_MCP_AGENT_ID = "main";
+          env.OPENCLAW_MCP_AGENT_ID = opts.agentId ?? "main";
           env.OPENCLAW_MCP_ACCOUNT_ID = "";
           env.OPENCLAW_MCP_MESSAGE_CHANNEL = "";
         }
