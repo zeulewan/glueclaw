@@ -412,3 +412,117 @@ describe("MCP agent identity", () => {
     expect(env.OPENCLAW_MCP_SESSION_KEY).toBe("session-xyz");
   });
 });
+
+/**
+ * Capture the args the Claude CLI subprocess was invoked with. Uses the
+ * args-echo mock scenario which emits the argv slice as the result text.
+ */
+async function captureSubprocessArgs(opts: {
+  sessionKey: string;
+  systemPrompt: string;
+  mockSessionId?: string;
+}): Promise<string[]> {
+  const origScenario = process.env.MOCK_SCENARIO;
+  const origMockSession = process.env.MOCK_SESSION_ID;
+  process.env.MOCK_SCENARIO = "args-echo";
+  if (opts.mockSessionId !== undefined)
+    process.env.MOCK_SESSION_ID = opts.mockSessionId;
+
+  try {
+    const streamFn = createClaudeCliStreamFn({
+      claudeBin: MOCK_CLI,
+      sessionKey: opts.sessionKey,
+      modelOverride: "claude-sonnet-4-6",
+    });
+    const model = {
+      id: "glueclaw-sonnet",
+      api: "anthropic-messages",
+      provider: "glueclaw",
+    } as any;
+    const context = {
+      systemPrompt: opts.systemPrompt,
+      messages: [{ role: "user" as const, content: "hi" }],
+    } as any;
+    const stream = await streamFn(model, context, {});
+    let resultText = "";
+    for await (const event of stream) {
+      if ((event as any).type === "done") {
+        resultText = (event as any).message.content[0].text;
+      }
+    }
+    return JSON.parse(resultText);
+  } finally {
+    if (origScenario !== undefined) process.env.MOCK_SCENARIO = origScenario;
+    else delete process.env.MOCK_SCENARIO;
+    if (origMockSession !== undefined)
+      process.env.MOCK_SESSION_ID = origMockSession;
+    else delete process.env.MOCK_SESSION_ID;
+  }
+}
+
+describe("system prompt re-injection on resume", () => {
+  it("includes --system-prompt on the first (fresh) call", async () => {
+    const args = await captureSubprocessArgs({
+      sessionKey: `sp-fresh-${Date.now()}-${Math.random()}`,
+      systemPrompt: "You are persona ALPHA.",
+    });
+    expect(args).toContain("--system-prompt");
+    const idx = args.indexOf("--system-prompt");
+    expect(args[idx + 1]).toBe("You are persona ALPHA.");
+    expect(args).not.toContain("--resume");
+  });
+
+  it("includes BOTH --resume and --system-prompt on subsequent calls", async () => {
+    const sessionKey = `sp-resume-${Date.now()}-${Math.random()}`;
+    const mockSessionId = `mock-sid-${Date.now()}`;
+
+    // First call populates sessionMap via the mock's system/init event.
+    await captureSubprocessArgs({
+      sessionKey,
+      systemPrompt: "You are persona BETA.",
+      mockSessionId,
+    });
+
+    // Second call should resume AND re-inject the system prompt.
+    const args = await captureSubprocessArgs({
+      sessionKey,
+      systemPrompt: "You are persona BETA.",
+      mockSessionId,
+    });
+    expect(args).toContain("--resume");
+    const resumeIdx = args.indexOf("--resume");
+    expect(args[resumeIdx + 1]).toBe(mockSessionId);
+    expect(args).toContain("--system-prompt");
+    const spIdx = args.indexOf("--system-prompt");
+    expect(args[spIdx + 1]).toBe("You are persona BETA.");
+  });
+
+  it("re-injects an updated system prompt on resume (identity drift recovery)", async () => {
+    const sessionKey = `sp-drift-${Date.now()}-${Math.random()}`;
+    const mockSessionId = `mock-sid-drift-${Date.now()}`;
+
+    await captureSubprocessArgs({
+      sessionKey,
+      systemPrompt: "You are agent A (original).",
+      mockSessionId,
+    });
+
+    const args = await captureSubprocessArgs({
+      sessionKey,
+      systemPrompt: "You are agent A (corrected).",
+      mockSessionId,
+    });
+    expect(args).toContain("--resume");
+    const spIdx = args.indexOf("--system-prompt");
+    expect(spIdx).toBeGreaterThanOrEqual(0);
+    expect(args[spIdx + 1]).toBe("You are agent A (corrected).");
+  });
+
+  it("omits --system-prompt entirely when no system prompt is provided", async () => {
+    const args = await captureSubprocessArgs({
+      sessionKey: `sp-empty-${Date.now()}-${Math.random()}`,
+      systemPrompt: "",
+    });
+    expect(args).not.toContain("--system-prompt");
+  });
+});
