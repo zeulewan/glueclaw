@@ -170,6 +170,7 @@ function evictSessions(): void {
 export function createClaudeCliStreamFn(opts: {
   claudeBin?: string;
   sessionKey?: string;
+  agentId?: string;
   modelOverride?: string;
   requestTimeoutMs?: number;
 }): StreamFn {
@@ -233,7 +234,7 @@ export function createClaudeCliStreamFn(opts: {
           args.push("--strict-mcp-config", "--mcp-config", mcp.path);
           env.OPENCLAW_MCP_TOKEN = loopback.token;
           env.OPENCLAW_MCP_SESSION_KEY = opts.sessionKey ?? "";
-          env.OPENCLAW_MCP_AGENT_ID = "main";
+          env.OPENCLAW_MCP_AGENT_ID = opts.agentId ?? "main";
           env.OPENCLAW_MCP_ACCOUNT_ID = "";
           env.OPENCLAW_MCP_MESSAGE_CHANNEL = "";
         }

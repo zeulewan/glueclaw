@@ -336,3 +336,79 @@ describe("concurrency", () => {
     }
   });
 });
+
+/**
+ * Run a stream against the env-echo scenario and return the parsed env snapshot
+ * the subprocess saw. Requires MCP loopback env vars to be set on process.env
+ * so stream.ts wires up OPENCLAW_MCP_AGENT_ID/SESSION_KEY/TOKEN at all.
+ */
+async function captureSubprocessEnv(opts: {
+  agentId?: string;
+  sessionKey?: string;
+}): Promise<Record<string, string | null>> {
+  const origScenario = process.env.MOCK_SCENARIO;
+  const origPort = process.env.__GLUECLAW_MCP_PORT;
+  const origToken = process.env.__GLUECLAW_MCP_TOKEN;
+  process.env.MOCK_SCENARIO = "env-echo";
+  process.env.__GLUECLAW_MCP_PORT = "12345";
+  process.env.__GLUECLAW_MCP_TOKEN = "test-token";
+
+  try {
+    const streamFn = createClaudeCliStreamFn({
+      claudeBin: MOCK_CLI,
+      sessionKey: opts.sessionKey ?? `env-${Date.now()}-${Math.random()}`,
+      agentId: opts.agentId,
+      modelOverride: "claude-sonnet-4-6",
+    });
+    const model = {
+      id: "glueclaw-sonnet",
+      api: "anthropic-messages",
+      provider: "glueclaw",
+    } as any;
+    const context = {
+      systemPrompt: "",
+      messages: [{ role: "user" as const, content: "say pong" }],
+    } as any;
+    const stream = await streamFn(model, context, {});
+    let resultText = "";
+    for await (const event of stream) {
+      if ((event as any).type === "done") {
+        resultText = (event as any).message.content[0].text;
+      }
+    }
+    return JSON.parse(resultText);
+  } finally {
+    if (origScenario !== undefined) process.env.MOCK_SCENARIO = origScenario;
+    else delete process.env.MOCK_SCENARIO;
+    if (origPort !== undefined) process.env.__GLUECLAW_MCP_PORT = origPort;
+    else delete process.env.__GLUECLAW_MCP_PORT;
+    if (origToken !== undefined) process.env.__GLUECLAW_MCP_TOKEN = origToken;
+    else delete process.env.__GLUECLAW_MCP_TOKEN;
+  }
+}
+
+describe("MCP agent identity", () => {
+  it("propagates opts.agentId to OPENCLAW_MCP_AGENT_ID", async () => {
+    const env = await captureSubprocessEnv({ agentId: "evacastro" });
+    expect(env.OPENCLAW_MCP_AGENT_ID).toBe("evacastro");
+  });
+
+  it("uses a different agentId for a different agent", async () => {
+    const env = await captureSubprocessEnv({ agentId: "roy" });
+    expect(env.OPENCLAW_MCP_AGENT_ID).toBe("roy");
+  });
+
+  it("falls back to 'main' when opts.agentId is omitted", async () => {
+    const env = await captureSubprocessEnv({});
+    expect(env.OPENCLAW_MCP_AGENT_ID).toBe("main");
+  });
+
+  it("propagates opts.sessionKey alongside agentId independently", async () => {
+    const env = await captureSubprocessEnv({
+      agentId: "evacastro",
+      sessionKey: "session-xyz",
+    });
+    expect(env.OPENCLAW_MCP_AGENT_ID).toBe("evacastro");
+    expect(env.OPENCLAW_MCP_SESSION_KEY).toBe("session-xyz");
+  });
+});
