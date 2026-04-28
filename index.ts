@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import {
   definePluginEntry,
   type OpenClawPluginApi,
@@ -71,8 +72,10 @@ export default definePluginEntry({
       },
       createStreamFn: (ctx: { modelId: string; agentDir?: string }) => {
         const realModel = MODEL_MAP[ctx.modelId] ?? ctx.modelId;
+        const agentId = ctx.agentDir ? basename(ctx.agentDir) : undefined;
         return createClaudeCliStreamFn({
           sessionKey: ctx.agentDir ?? "default",
+          agentId,
           modelOverride: realModel,
         });
       },
