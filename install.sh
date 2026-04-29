@@ -29,14 +29,6 @@ oc_config() {
   }
 }
 
-sedi() {
-  if [[ "$(uname)" == "Darwin" ]]; then
-    sed -i '' "$@"
-  else
-    sed -i "$@"
-  fi
-}
-
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "$1 not found. $2"
 }
@@ -121,14 +113,6 @@ else
 fi
 echo ""
 
-# Find OpenClaw dist
-OPENCLAW_BIN="$(command -v openclaw)"
-OPENCLAW_ROOT="$(dirname "$OPENCLAW_BIN")/../lib/node_modules/openclaw"
-# Suppress not-found: fallback path may not exist
-[ ! -d "$OPENCLAW_ROOT/dist" ] && OPENCLAW_ROOT="$(npm root -g 2>/dev/null)/openclaw"
-[ ! -d "$OPENCLAW_ROOT/dist" ] && die "Cannot find OpenClaw dist"
-OPENCLAW_DIST="$OPENCLAW_ROOT/dist"
-
 # Detect shell config
 if [ -f "${HOME}/.zshrc" ]; then
   SHELL_RC="${HOME}/.zshrc"
@@ -142,17 +126,7 @@ fi
 
 GW_PID=""
 GW_LOG=""
-BACKUP_FILE=""
 cleanup() {
-  # Restore MCP patch backup if script failed mid-patch
-  if [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
-    if [ -w "$(dirname "$BACKUP_FILE")" ]; then
-      mv "$BACKUP_FILE" "${BACKUP_FILE%.glueclaw-bak}" 2>/dev/null || true
-    else
-      sudo mv "$BACKUP_FILE" "${BACKUP_FILE%.glueclaw-bak}" 2>/dev/null || true
-    fi
-    echo "  Restored backup: $(basename "$BACKUP_FILE")" >&2
-  fi
   if [ -n "$GW_PID" ] && kill -0 "$GW_PID" 2>/dev/null; then
     kill "$GW_PID" 2>/dev/null || true
   fi
@@ -162,19 +136,19 @@ trap cleanup INT TERM
 
 # --- 1. Dependencies ---
 
-echo "[1/7] Installing dependencies..."
+echo "[1/6] Installing dependencies..."
 cd "$PLUGIN_DIR"
 npm install --silent || die "npm install failed"
 
 # --- 2. Environment ---
 
-echo "[2/7] Setting up environment..."
+echo "[2/6] Setting up environment..."
 ensure_line "$SHELL_RC" "GLUECLAW_KEY" "export GLUECLAW_KEY=local"
 export GLUECLAW_KEY=local
 
 # --- 3. Plugin registration ---
 
-echo "[3/7] Registering plugin..."
+echo "[3/6] Registering plugin..."
 # GlueClaw is on OpenClaw's official safe plugin list. Try standard install first,
 # fall back to --dangerously-force-unsafe-install for older OpenClaw versions,
 # then manual config as last resort.
@@ -188,7 +162,7 @@ fi
 
 # --- 4. Model config ---
 
-echo "[4/7] Configuring models..."
+echo "[4/6] Configuring models..."
 # These two are fatal — without them, nothing works
 oc_config models.providers.glueclaw \
   '{"baseUrl":"local://glueclaw","models":[{"id":"glueclaw-opus","name":"GlueClaw Opus","contextWindow":1000000},{"id":"glueclaw-sonnet","name":"GlueClaw Sonnet","contextWindow":1000000},{"id":"glueclaw-haiku","name":"GlueClaw Haiku","contextWindow":200000}]}' \
@@ -211,47 +185,20 @@ oc_config gateway.tools.allow \
 
 # --- 5. Auth profile ---
 
-echo "[5/7] Setting up auth..."
+echo "[5/6] Setting up auth..."
 AGENT_DIR="${HOME}/.openclaw/agents/main/agent"
 mkdir -p "$AGENT_DIR" || die "Cannot create $AGENT_DIR"
 AUTH_FILE="$AGENT_DIR/auth-profiles.json"
 write_auth_profile "$AUTH_FILE"
 
-# --- 6. Patch: MCP bridge ---
+# --- 6. Restart gateway ---
+# Note: GlueClaw bootstraps OpenClaw's MCP loopback in-process from
+# src/stream.ts (see docs/RFC-001-sessions-send-native.md). No dist patching
+# is needed — GlueClaw shares OpenClaw's module cache as an in-process
+# provider, so calling ensureMcpLoopbackServer() and getActiveMcpLoopbackRuntime()
+# directly is sufficient.
 
-echo "[6/7] Patching gateway for MCP bridge..."
-SERVER_FILE=$(grep -rl "mcp loopback listening" "$OPENCLAW_DIST"/*.js 2>/dev/null | head -n 1)
-[ -z "$SERVER_FILE" ] && die "Cannot find MCP loopback in OpenClaw dist — incompatible version?"
-
-# Use sudo for file operations if dist directory is not writable (global npm install)
-ELEVATE=""
-if [ ! -w "$OPENCLAW_DIST" ]; then
-  echo "  OpenClaw dist is root-owned, using sudo for patch..."
-  ELEVATE="sudo"
-fi
-
-if ! grep -q "__GLUECLAW_MCP" "$SERVER_FILE"; then
-  $ELEVATE cp "$SERVER_FILE" "${SERVER_FILE}.glueclaw-bak" || die "Cannot backup $SERVER_FILE"
-  BACKUP_FILE="${SERVER_FILE}.glueclaw-bak"
-  # shellcheck disable=SC2016
-  if [ -n "$ELEVATE" ]; then
-    $ELEVATE sed -i 's/logDebug(`mcp loopback listening/process.env.__GLUECLAW_MCP_PORT = String(address.port); process.env.__GLUECLAW_MCP_TOKEN = token; logDebug(`mcp loopback listening/' "$SERVER_FILE" ||
-      die "Failed to patch $SERVER_FILE"
-  else
-    sedi 's/logDebug(`mcp loopback listening/process.env.__GLUECLAW_MCP_PORT = String(address.port); process.env.__GLUECLAW_MCP_TOKEN = token; logDebug(`mcp loopback listening/' "$SERVER_FILE" ||
-      die "Failed to patch $SERVER_FILE"
-  fi
-  # Validate the patch actually applied
-  grep -q "__GLUECLAW_MCP_PORT" "$SERVER_FILE" || die "MCP patch did not apply — sed replacement failed"
-  BACKUP_FILE=""  # Patch succeeded, don't restore on cleanup
-  echo "  Patched $(basename "$SERVER_FILE")"
-else
-  echo "  Already patched"
-fi
-
-# --- 7. Restart gateway ---
-
-echo "[7/7] Starting gateway..."
+echo "[6/6] Starting gateway..."
 # Stop any existing gateway first
 pkill -f "openclaw.*gateway" 2>/dev/null || true
 openclaw gateway stop 2>/dev/null || true

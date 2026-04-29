@@ -91,12 +91,71 @@ export function buildMsg(
   };
 }
 
-/** Get the MCP loopback port and token from process.env.
- *  The gateway patches write these during MCP server startup. */
-export function getMcpLoopback(): { port: number; token: string } | undefined {
-  const port = process.env.__GLUECLAW_MCP_PORT;
-  const token = process.env.__GLUECLAW_MCP_TOKEN;
-  if (port && token) return { port: parseInt(port, 10), token };
+interface McpLoopbackRuntime {
+  port: number;
+  ownerToken: string;
+  nonOwnerToken?: string;
+}
+
+let _mcpLoopback: { port: number; token: string } | undefined;
+let _mcpBootstrapAttempted = false;
+
+/** Bootstrap OpenClaw's MCP loopback server in-process and return the
+ *  port + owner token. GlueClaw runs inside the gateway process, so we
+ *  share OpenClaw's module cache: importing the same `mcp-http-*.js`
+ *  the gateway loaded gives us the singleton, and a no-op when another
+ *  caller already started it.
+ *
+ *  Returns undefined if the OpenClaw dist cannot be located or its API
+ *  has changed — in that case the claude subprocess simply runs without
+ *  session tools, matching pre-RFC-001 behavior. */
+export async function getMcpLoopback(): Promise<
+  { port: number; token: string } | undefined
+> {
+  if (_mcpLoopback) return _mcpLoopback;
+  if (_mcpBootstrapAttempted) return undefined;
+  _mcpBootstrapAttempted = true;
+
+  try {
+    const { readdir } = await import("node:fs/promises");
+    const nodePaths = (process.env.NODE_PATH ?? "").split(":");
+    const distDirs = nodePaths
+      .filter((p) => p.includes("openclaw"))
+      .map((p) => p.replace(/\/node_modules\/?$/, "/dist"));
+
+    for (const distDir of distDirs) {
+      try {
+        const files = await readdir(distDir);
+        const mcpFile = files.find(
+          (f) => f.startsWith("mcp-http-") && f.endsWith(".js"),
+        );
+        if (!mcpFile) continue;
+        const mod = (await import(
+          `file://${distDir}/${mcpFile}`
+        )) as Record<string, unknown>;
+        // Minified aliases: n=ensureMcpLoopbackServer, i=getActiveMcpLoopbackRuntime
+        const ensureFn = (mod["n"] ?? mod["ensureMcpLoopbackServer"]) as
+          | (() => Promise<unknown>)
+          | undefined;
+        const getRuntime = (mod["i"] ?? mod["getActiveMcpLoopbackRuntime"]) as
+          | (() => McpLoopbackRuntime | undefined)
+          | undefined;
+        if (typeof ensureFn !== "function" || typeof getRuntime !== "function") {
+          continue;
+        }
+        await ensureFn();
+        const runtime = getRuntime();
+        if (runtime?.port && runtime.ownerToken) {
+          _mcpLoopback = { port: runtime.port, token: runtime.ownerToken };
+          return _mcpLoopback;
+        }
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    // Non-fatal: session tools simply won't be available
+  }
   return undefined;
 }
 
@@ -230,7 +289,7 @@ export function createClaudeCliStreamFn(opts: {
         delete env.ANTHROPIC_API_KEY_OLD;
 
         // Wire up MCP bridge for OpenClaw gateway tools
-        const loopback = getMcpLoopback();
+        const loopback = await getMcpLoopback();
         if (loopback) {
           const mcp = writeMcpConfig(loopback.port);
           mcpCleanup = mcp.cleanup;
