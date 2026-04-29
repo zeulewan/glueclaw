@@ -13,6 +13,7 @@ import { randomBytes } from "node:crypto";
 import { createAssistantMessageEventStream } from "@mariozechner/pi-ai";
 import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, Usage, TextContent } from "@mariozechner/pi-ai";
+import { deriveTurnSessionKey } from "./session-key.js";
 
 const PROCESS_TIMEOUT_MS = 5000;
 const REQUEST_TIMEOUT_MS = 120_000;
@@ -243,6 +244,15 @@ export function createClaudeCliStreamFn(opts: {
       let mcpCleanup: (() => void) | undefined;
       let stderrBuf = "";
       try {
+        const turnSessionKey = deriveTurnSessionKey({
+          agentId: opts.agentId,
+          systemPrompt: context.systemPrompt,
+          messages: context.messages as
+            | Array<{ role: string; content: unknown }>
+            | undefined,
+        });
+        const effectiveSessionKey =
+          turnSessionKey ?? opts.sessionKey ?? "default";
         // Scrub Anthropic detection triggers (see docs/detection-patterns.md)
         const cleanPrompt = scrubPrompt(context.systemPrompt ?? "");
         const resolvedModel = opts.modelOverride ?? model.id;
@@ -259,7 +269,7 @@ export function createClaudeCliStreamFn(opts: {
         // otherwise stick to whatever identity was used on the first turn,
         // leaving no way for callers to reinforce or correct an agent's
         // identity across turns.
-        const sessionKey = `glueclaw:${opts.sessionKey ?? "default"}`;
+        const sessionKey = `glueclaw:${effectiveSessionKey}`;
         const existingSessionId = sessionMap.get(sessionKey);
         if (existingSessionId) {
           args.push("--resume", existingSessionId);
@@ -295,7 +305,7 @@ export function createClaudeCliStreamFn(opts: {
           mcpCleanup = mcp.cleanup;
           args.push("--strict-mcp-config", "--mcp-config", mcp.path);
           env.OPENCLAW_MCP_TOKEN = loopback.token;
-          env.OPENCLAW_MCP_SESSION_KEY = opts.sessionKey ?? "";
+          env.OPENCLAW_MCP_SESSION_KEY = effectiveSessionKey;
           env.OPENCLAW_MCP_AGENT_ID = opts.agentId ?? "main";
           env.OPENCLAW_MCP_ACCOUNT_ID = "";
           env.OPENCLAW_MCP_MESSAGE_CHANNEL = "";
