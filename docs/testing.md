@@ -16,13 +16,13 @@ RUN_LIVE_TESTS=1 npm run test:e2e  # live CLI + OpenClaw e2e (~30s)
 RUN_LIVE_TESTS=1 npm test          # everything (~32s)
 ```
 
-| Layer            | Tests | What it covers                                                                     |
-| ---------------- | ----- | ---------------------------------------------------------------------------------- |
-| Unit             | 37    | scrubPrompt, unscrubResponse, buildUsage, buildMsg, getMcpLoopback, writeMcpConfig |
-| Integration      | 17    | Mock CLI (11 NDJSON scenarios), timeout, stderr capture, concurrency               |
-| E2E: OpenClaw    | 3     | Plugin registration, provider exposure, agent smoke test                           |
-| E2E: live CLI    | 2     | Real Claude CLI response, scrubbed prompt acceptance                               |
-| E2E: stream live | 2     | createClaudeCliStreamFn with real CLI + Max plan OAuth, session resume             |
+| Layer            | Tests | What it covers                                                                                 |
+| ---------------- | ----- | ---------------------------------------------------------------------------------------------- |
+| Unit             | 44    | scrubPrompt, unscrubResponse, buildUsage, buildMsg, session keys, MCP config/bootstrap         |
+| Integration      | 33    | Mock CLI NDJSON scenarios, timeout, stderr capture, MCP env, system prompt resume, concurrency |
+| E2E: OpenClaw    | 3     | Plugin registration, provider exposure, agent smoke test                                       |
+| E2E: live CLI    | 2     | Real Claude CLI response, scrubbed prompt acceptance                                           |
+| E2E: stream live | 2     | createClaudeCliStreamFn with real CLI + Max plan OAuth, session resume                         |
 
 ### Integration test breakdown
 

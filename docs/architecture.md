@@ -64,24 +64,24 @@ OpenClaw's system prompt contains tokens that Anthropic's API rejects. `scrubPro
 Sessions enable multi-turn conversation memory across separate requests.
 
 - **Storage:** `~/.glueclaw/sessions.json` — a JSON object mapping session keys to Claude session IDs
-- **Key format:** `glueclaw:{agentDir}` (e.g., `glueclaw:default`)
+- **Key format:** `glueclaw:{sessionKey}` where available, falling back to `sessionId`, `agentDir`, then `default`
 - **Capture:** Session ID is extracted from NDJSON `system/init` and `result` events
-- **Resume:** When a session key exists, `--resume <session_id>` is passed instead of `--system-prompt`
+- **Resume:** When a session key exists, `--resume <session_id>` is passed and the current `--system-prompt` is still supplied
 - **Working directory:** CLI runs from `~/.glueclaw` so Claude's own session data persists
 
 ## MCP bridge
 
 Gives the Claude CLI subprocess access to OpenClaw gateway tools (message, sessions, memory, web search, etc.).
 
-1. `install.sh` patches OpenClaw's `server-*.js` to expose `__GLUECLAW_MCP_PORT` and `__GLUECLAW_MCP_TOKEN` as env vars when the MCP loopback server starts
-2. `getMcpLoopback()` reads these env vars at runtime
+1. `getMcpLoopback()` bootstraps OpenClaw's in-process MCP loopback and reads its live port + owner token
+2. If an older patched OpenClaw install still exposes `__GLUECLAW_MCP_PORT` and `__GLUECLAW_MCP_TOKEN`, those env vars are accepted as a compatibility fallback
 3. `writeMcpConfig()` creates a temporary `mcp.json` pointing to `http://127.0.0.1:{port}/mcp` with auth headers
 4. CLI is invoked with `--strict-mcp-config --mcp-config {path}`
 5. Temp config is cleaned up in a `finally` block
 
 ## Installer
 
-`install.sh` runs 7 idempotent steps:
+`install.sh` runs 6 idempotent steps:
 
 | Step | What it does                                                                      |
 | ---- | --------------------------------------------------------------------------------- |
@@ -90,10 +90,9 @@ Gives the Claude CLI subprocess access to OpenClaw gateway tools (message, sessi
 | 3    | Registers plugin with `openclaw plugins install --link` (fallback: manual config) |
 | 4    | Configures 3 models, sets default to `glueclaw-sonnet`, allows gateway tools      |
 | 5    | Writes auth profile to `~/.openclaw/agents/main/agent/auth-profiles.json`         |
-| 6    | Patches `server-*.js` to expose MCP loopback port and token via env vars          |
-| 7    | Starts gateway on port 18789, waits for readiness                                 |
+| 6    | Starts gateway on port 18789, waits for readiness                                 |
 
-Re-run after OpenClaw updates to re-apply the MCP patch.
+Re-run after OpenClaw updates to refresh plugin registration and model config.
 
 ## Source files
 
@@ -103,15 +102,15 @@ Re-run after OpenClaw updates to re-apply the MCP patch.
 | `src/stream.ts`        | Core: subprocess spawn, NDJSON parsing, scrub/unscrub, sessions, MCP bridge |
 | `src/openclaw.d.ts`    | Type declarations for the OpenClaw plugin SDK                               |
 | `openclaw.plugin.json` | Plugin manifest: provider ID, auth env vars, auth choices                   |
-| `install.sh`           | Installer: deps, config, auth, MCP patch, gateway startup                   |
+| `install.sh`           | Installer: deps, config, auth, gateway startup                              |
 | `vitest.config.ts`     | Test runner config (forks pool, 30s timeout)                                |
 
 ## Test coverage
 
 61 automated tests across 3 layers. See [testing](testing.md) for details.
 
-| Layer       | Tests | What it validates                                                                              |
-| ----------- | ----- | ---------------------------------------------------------------------------------------------- |
-| Unit        | 37    | `scrubPrompt`, `unscrubResponse`, `buildUsage`, `buildMsg`, `getMcpLoopback`, `writeMcpConfig` |
-| Integration | 17    | Mock CLI (11 NDJSON scenarios), request timeout, stderr capture, 4 concurrency tests           |
-| E2E         | 7     | Real Claude CLI with Max plan OAuth, session resume, OpenClaw plugin registration              |
+| Layer       | Tests | What it validates                                                                                      |
+| ----------- | ----- | ------------------------------------------------------------------------------------------------------ |
+| Unit        | 44    | `scrubPrompt`, `unscrubResponse`, `buildUsage`, `buildMsg`, session keys, MCP config/bootstrap         |
+| Integration | 33    | Mock CLI NDJSON scenarios, request timeout, stderr capture, MCP env, system prompt resume, concurrency |
+| E2E         | 7     | Real Claude CLI with Max plan OAuth, session resume, OpenClaw plugin registration                      |

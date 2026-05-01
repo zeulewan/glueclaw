@@ -40,7 +40,7 @@ describe.skipIf(!openclawAvailable)("OpenClaw GlueClaw plugin", () => {
     const glueclaw = data.plugins.find((p: any) => p.id === "glueclaw");
     expect(glueclaw).toBeDefined();
     expect(glueclaw.status).toBe("loaded");
-    expect(glueclaw.name).toBe("@openclaw/glueclaw-provider");
+    expect(glueclaw.name).toBe("@zeulewan/glueclaw-provider");
   });
 
   it("plugin exposes glueclaw provider", () => {

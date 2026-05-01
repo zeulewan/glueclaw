@@ -17,18 +17,17 @@ result, but race conditions exist.
 TUI says "disconnected" if started before the gateway is ready. Wait a few
 seconds and reconnect.
 
-## MCP patch not applied
+## Session tools missing
 
-The installer patches one `.js` file in OpenClaw's dist. Different OpenClaw
-versions use different filenames. The installer searches by content
-(`grep -rl "mcp loopback listening"`), not by filename.
+GlueClaw starts OpenClaw's MCP loopback in-process. The installer no longer
+patches OpenClaw's dist files.
 
-If the patch fails:
+If session tools such as `sessions_send` are missing:
 
 - Check `install.sh` output for errors
-- Verify the dist directory exists:
+- Verify OpenClaw's dist directory exists:
   `ls "$(dirname "$(command -v openclaw)")/../lib/node_modules/openclaw/dist"`
-- Re-run `bash install.sh` after updating OpenClaw
+- Restart the gateway after updating GlueClaw
 
 ## Session resume not working
 

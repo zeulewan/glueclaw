@@ -66,7 +66,7 @@ export GLUECLAW_REQUEST_TIMEOUT_MS=600000
 
 - Tested with Telegram and OpenClaw TUI
 - Switching between GlueClaw and other backends (e.g. Codex) works seamlessly via `/model`
-- The installer patches one file in OpenClaw's dist to expose the MCP loopback token to plugins. A `.glueclaw-bak` backup is created.
+- The installer does not patch OpenClaw's dist. GlueClaw starts the MCP loopback in-process when available.
 
 ## Disclaimer
 

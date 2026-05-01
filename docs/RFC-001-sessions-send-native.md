@@ -53,7 +53,7 @@ runtime, and any `ensureMcpLoopbackServer()` already running becomes a no-op.
    same module cache key, same singleton.
 3. Calls `ensureMcpLoopbackServer()` (idempotent).
 4. Calls `getActiveMcpLoopbackRuntime()` to read the live `{ port,
-   ownerToken }` directly out of memory.
+ownerToken }` directly out of memory.
 5. Caches the result for subsequent invocations.
 
 The Claude subprocess is then spawned with `--mcp-config` pointing at a
@@ -79,12 +79,12 @@ The bundle exports session-tool helpers under terse aliases. We look up
 both the alias and the original name so the code keeps working if a
 future OpenClaw build switches them:
 
-| Alias | Original |
-|-------|----------|
-| `n`   | `ensureMcpLoopbackServer` |
-| `i`   | `getActiveMcpLoopbackRuntime` |
+| Alias | Original                        |
+| ----- | ------------------------------- |
+| `n`   | `ensureMcpLoopbackServer`       |
+| `i`   | `getActiveMcpLoopbackRuntime`   |
 | `r`   | `createMcpLoopbackServerConfig` |
-| `t`   | `closeMcpLoopbackServer` |
+| `t`   | `closeMcpLoopbackServer`        |
 
 ---
 
@@ -122,7 +122,7 @@ gone (was step 6/7, now removed).
 - **No build step required:** OpenClaw loads the TypeScript directly via
   `tsx` (the plugin is registered with `--link`).
 - **Requires:** restart the gateway (`systemctl --user restart
-  openclaw-gateway`) so the new module is imported.
+openclaw-gateway`) so the new module is imported.
 - **No OpenClaw dist mutation.** If a previous `install.sh` ran a `sed`
   patch against `mcp-http-*.js`, restore it from the upstream npm
   package or remove the inserted prefix manually before restarting.
@@ -138,15 +138,15 @@ gone (was step 6/7, now removed).
 4. From the active agent session, call `sessions_send` — it must execute
    as a native function call, not as external WebSocket RPC.
 5. The receiving agent must get `Agent 1 (requester) session:
-   agent:<id>:...` in its `extraSystemPrompt`.
+agent:<id>:...` in its `extraSystemPrompt`.
 
 ---
 
 ## Discarded alternatives
 
-| Option | Why not |
-|--------|---------|
-| `bundleMcp: true` in `openclaw.json` | Not a config field — only a backend registration property |
-| External script + WebSocket `sessions.send` | Does not inject the inter-agent authentication `extraSystemPrompt` |
-| `sed`-patch the OpenClaw dist + leak via `process.env` | Fragile against bundle renames; latent bug already discovered (`token is not defined`); unnecessary because GlueClaw is in-process |
-| Register GlueClaw as a CLI backend instead of a provider | Major architectural change, incompatible with the current provider model |
+| Option                                                   | Why not                                                                                                                            |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `bundleMcp: true` in `openclaw.json`                     | Not a config field — only a backend registration property                                                                          |
+| External script + WebSocket `sessions.send`              | Does not inject the inter-agent authentication `extraSystemPrompt`                                                                 |
+| `sed`-patch the OpenClaw dist + leak via `process.env`   | Fragile against bundle renames; latent bug already discovered (`token is not defined`); unnecessary because GlueClaw is in-process |
+| Register GlueClaw as a CLI backend instead of a provider | Major architectural change, incompatible with the current provider model                                                           |

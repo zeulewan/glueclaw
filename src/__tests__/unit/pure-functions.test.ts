@@ -1,14 +1,18 @@
 import { describe, it, expect, afterEach } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   buildUsage,
   buildMsg,
   scrubPrompt,
   unscrubResponse,
   getMcpLoopback,
+  resetMcpLoopbackForTests,
 } from "../../stream.js";
 import { MODEL_CATALOG } from "../../catalog.js";
 import { binarySearchTrigger } from "../../healthcheck.js";
-import { resolveSessionKey } from "../../session-key.js";
+import { deriveTurnSessionKey, resolveSessionKey } from "../../session-key.js";
 
 describe("buildUsage", () => {
   it("returns zeroed usage when called with undefined", () => {
@@ -207,45 +211,85 @@ describe("unscrubResponse", () => {
 describe("getMcpLoopback", () => {
   const origPort = process.env.__GLUECLAW_MCP_PORT;
   const origToken = process.env.__GLUECLAW_MCP_TOKEN;
+  const origNodePath = process.env.NODE_PATH;
 
   afterEach(() => {
+    resetMcpLoopbackForTests();
     if (origPort !== undefined) process.env.__GLUECLAW_MCP_PORT = origPort;
     else delete process.env.__GLUECLAW_MCP_PORT;
     if (origToken !== undefined) process.env.__GLUECLAW_MCP_TOKEN = origToken;
     else delete process.env.__GLUECLAW_MCP_TOKEN;
+    if (origNodePath !== undefined) process.env.NODE_PATH = origNodePath;
+    else delete process.env.NODE_PATH;
   });
 
-  it("returns { port, token } when both env vars set", () => {
+  it("returns { port, token } when both env vars set", async () => {
     process.env.__GLUECLAW_MCP_PORT = "3456";
     process.env.__GLUECLAW_MCP_TOKEN = "secret123";
-    const result = getMcpLoopback();
+    const result = await getMcpLoopback();
     expect(result).toEqual({ port: 3456, token: "secret123" });
   });
 
-  it("returns undefined when port is missing", () => {
+  it("returns undefined when port is missing", async () => {
     delete process.env.__GLUECLAW_MCP_PORT;
     process.env.__GLUECLAW_MCP_TOKEN = "secret123";
-    expect(getMcpLoopback()).toBeUndefined();
+    await expect(getMcpLoopback()).resolves.toBeUndefined();
   });
 
-  it("returns undefined when token is missing", () => {
+  it("returns undefined when token is missing", async () => {
     process.env.__GLUECLAW_MCP_PORT = "3456";
     delete process.env.__GLUECLAW_MCP_TOKEN;
-    expect(getMcpLoopback()).toBeUndefined();
+    await expect(getMcpLoopback()).resolves.toBeUndefined();
   });
 
-  it("returns undefined when both are missing", () => {
+  it("returns undefined when both are missing", async () => {
     delete process.env.__GLUECLAW_MCP_PORT;
     delete process.env.__GLUECLAW_MCP_TOKEN;
-    expect(getMcpLoopback()).toBeUndefined();
+    await expect(getMcpLoopback()).resolves.toBeUndefined();
   });
 
-  it("parses port as integer", () => {
+  it("parses port as integer", async () => {
     process.env.__GLUECLAW_MCP_PORT = "8080";
     process.env.__GLUECLAW_MCP_TOKEN = "tok";
-    const result = getMcpLoopback();
+    const result = await getMcpLoopback();
     expect(result?.port).toBe(8080);
     expect(typeof result?.port).toBe("number");
+  });
+
+  it("bootstraps the in-process OpenClaw MCP loopback from NODE_PATH", async () => {
+    delete process.env.__GLUECLAW_MCP_PORT;
+    delete process.env.__GLUECLAW_MCP_TOKEN;
+
+    const root = mkdtempSync(join(tmpdir(), "glueclaw-openclaw-"));
+    try {
+      const openclawRoot = join(root, "openclaw");
+      const nodeModules = join(openclawRoot, "node_modules");
+      const dist = join(openclawRoot, "dist");
+      mkdirSync(nodeModules, { recursive: true });
+      mkdirSync(dist, { recursive: true });
+      writeFileSync(
+        join(dist, "mcp-http-test.js"),
+        `
+let runtime;
+export async function ensureMcpLoopbackServer() {
+  runtime = { port: 4567, ownerToken: "owner-token" };
+}
+export function getActiveMcpLoopbackRuntime() {
+  return runtime;
+}
+`,
+      );
+
+      process.env.NODE_PATH = nodeModules;
+      resetMcpLoopbackForTests();
+
+      await expect(getMcpLoopback()).resolves.toEqual({
+        port: 4567,
+        token: "owner-token",
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
@@ -423,5 +467,96 @@ describe("resolveSessionKey", () => {
         sessionId: "would-be-skipped",
       }),
     ).toBe("would-be-skipped");
+  });
+});
+
+describe("deriveTurnSessionKey", () => {
+  it("uses the target session from inter-agent system prompt metadata", () => {
+    expect(
+      deriveTurnSessionKey({
+        agentId: "evacastro",
+        systemPrompt: [
+          "Agent-to-agent message context:",
+          "Agent 1 (requester) session: agent:roy:telegram:direct:540382330.",
+          "Agent 2 (target) session: agent:evacastro:telegram:direct:540382330.",
+        ].join("\n"),
+      }),
+    ).toBe("agent:evacastro:telegram:direct:540382330");
+  });
+
+  it("derives a direct Telegram session from a leading Conversation info block", () => {
+    expect(
+      deriveTurnSessionKey({
+        agentId: "roy",
+        messages: [
+          {
+            role: "user",
+            content:
+              'Conversation info (untrusted metadata):\n{"chat_id":"telegram:540382330"}\n\nhello',
+          },
+        ],
+      }),
+    ).toBe("agent:roy:telegram:direct:540382330");
+  });
+
+  it("derives Telegram group and supergroup session kinds", () => {
+    expect(
+      deriveTurnSessionKey({
+        agentId: "roy",
+        messages: [
+          {
+            role: "user",
+            content:
+              'Conversation info:\n{"chat_id":"telegram:-12345"}\n\nhello',
+          },
+        ],
+      }),
+    ).toBe("agent:roy:telegram:group:12345");
+
+    expect(
+      deriveTurnSessionKey({
+        agentId: "roy",
+        messages: [
+          {
+            role: "user",
+            content:
+              'Conversation info:\n{"chat_id":"telegram:-10098765"}\n\nhello',
+          },
+        ],
+      }),
+    ).toBe("agent:roy:telegram:supergroup:98765");
+  });
+
+  it("ignores embedded chat_id strings outside the leading metadata block", () => {
+    expect(
+      deriveTurnSessionKey({
+        agentId: "roy",
+        messages: [
+          {
+            role: "user",
+            content: 'please use this "chat_id":"telegram:999" thanks',
+          },
+        ],
+      }),
+    ).toBeUndefined();
+  });
+
+  it("reads text blocks from array message content", () => {
+    expect(
+      deriveTurnSessionKey({
+        agentId: "roy",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: 'Conversation info:\n{"chat_id":"telegram:123"}',
+              },
+            ],
+          },
+        ],
+      }),
+    ).toBe("agent:roy:telegram:direct:123");
   });
 });

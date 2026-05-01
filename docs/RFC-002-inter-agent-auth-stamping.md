@@ -11,7 +11,7 @@ Follow-up to RFC-001.
 After RFC-001, `sessions_send` is invocable as a native MCP tool, but the
 end-to-end inter-agent authentication contract is still broken. When agent
 A invokes `sessions_send` to deliver a message to agent B, the gateway
-*does* extend B's `extraSystemPrompt` with an `Agent-to-agent message
+_does_ extend B's `extraSystemPrompt` with an `Agent-to-agent message
 context:` block — but the line that should carry A's identity arrives
 with a useless filesystem path:
 
@@ -41,7 +41,7 @@ on-disk path of the agent). `resolveSessionKey()` therefore fell
 through to that path, and the path got forwarded as
 `x-session-key` → ended up in the receiver's stamped block.
 
-The previous code was correct *given* that OpenClaw populated
+The previous code was correct _given_ that OpenClaw populated
 `sessionKey`/`sessionId` on the registration ctx — but with the
 runtime we have, both fields are empty.
 
@@ -61,12 +61,14 @@ Two cases, in order of preference:
 1. **Inter-agent inbound** — the system prompt is extended with an
    `Agent-to-agent message context:` block. The line
    `Agent 2 (target) session: agent:<agentId>:<channel>:<kind>:<id>`
-   *is* this turn's session key (the target = the agent currently
+   _is_ this turn's session key (the target = the agent currently
    running). Use it verbatim.
 
 2. **Channel inbound (Telegram)** — the most recent user message
-   begins with a `Conversation info (untrusted metadata):` JSON block
-   carrying `"chat_id": "<channel>:<id>"`. Construct
+   begins with the gateway-provided `Conversation info (untrusted metadata):`
+   JSON block
+   carrying `"chat_id": "<channel>:<id>"`. Embedded `chat_id` text later in
+   the message is ignored. Construct
    `agent:<agentId>:<channel>:<kind>:<id>` from it. Telegram convention:
    - positive `id` → `direct`
    - `id` starting with `-100` → `supergroup` (with the prefix stripped)
@@ -85,7 +87,7 @@ runs `deriveTurnSessionKey()` first and uses the result as
 - The `OPENCLAW_MCP_SESSION_KEY` env var that ends up as
   `x-session-key` in the MCP loopback request.
 
-### What it is *not*
+### What it is _not_
 
 - **Not cryptographic.** The bar set by this RFC is "the gateway —
   which is already trusted — stamps requester identity into the
@@ -134,9 +136,9 @@ conversation scope before acting on the message body.
 
 ## Discarded alternatives
 
-| Option | Why not |
-|--------|---------|
-| Keep using `agentDir` and ask OpenClaw to "just accept paths" | Inverts the layering — every session-aware policy in the gateway expects a real session key |
-| Maintain a separate `(agentId, lastChatId) → sessionKey` map | Redundant — every relevant turn already carries the data we need in either the system prompt or the latest user message |
-| Add new MCP headers (`x-glueclaw-agent-dir`, etc.) and patch OpenClaw to resolve sessions from them | Cross-repo change; bypasses the gateway's existing session resolution logic |
-| Wait for [openclaw#73488](https://github.com/openclaw/openclaw/pull/73488) to land | Fix is local-only and the fallback chain remains compatible once #73488 lands |
+| Option                                                                                              | Why not                                                                                                                 |
+| --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Keep using `agentDir` and ask OpenClaw to "just accept paths"                                       | Inverts the layering — every session-aware policy in the gateway expects a real session key                             |
+| Maintain a separate `(agentId, lastChatId) → sessionKey` map                                        | Redundant — every relevant turn already carries the data we need in either the system prompt or the latest user message |
+| Add new MCP headers (`x-glueclaw-agent-dir`, etc.) and patch OpenClaw to resolve sessions from them | Cross-repo change; bypasses the gateway's existing session resolution logic                                             |
+| Wait for [openclaw#73488](https://github.com/openclaw/openclaw/pull/73488) to land                  | Fix is local-only and the fallback chain remains compatible once #73488 lands                                           |

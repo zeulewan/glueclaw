@@ -7,9 +7,10 @@ import {
   rmSync,
   renameSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, delimiter, dirname, join, normalize } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { createAssistantMessageEventStream } from "@mariozechner/pi-ai";
 import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, Usage, TextContent } from "@mariozechner/pi-ai";
@@ -101,6 +102,28 @@ interface McpLoopbackRuntime {
 let _mcpLoopback: { port: number; token: string } | undefined;
 let _mcpBootstrapAttempted = false;
 
+function getEnvMcpLoopback(): { port: number; token: string } | undefined {
+  const portRaw = process.env.__GLUECLAW_MCP_PORT;
+  const token = process.env.__GLUECLAW_MCP_TOKEN;
+  if (!portRaw || !token) return undefined;
+
+  const port = Number.parseInt(portRaw, 10);
+  if (!Number.isFinite(port) || port <= 0) return undefined;
+  return { port, token };
+}
+
+function openClawDistFromNodePath(nodePath: string): string | undefined {
+  const normalized = normalize(nodePath);
+  if (!normalized.includes("openclaw")) return undefined;
+  if (basename(normalized) !== "node_modules") return undefined;
+  return join(dirname(normalized), "dist");
+}
+
+export function resetMcpLoopbackForTests(): void {
+  _mcpLoopback = undefined;
+  _mcpBootstrapAttempted = false;
+}
+
 /** Bootstrap OpenClaw's MCP loopback server in-process and return the
  *  port + owner token. GlueClaw runs inside the gateway process, so we
  *  share OpenClaw's module cache: importing the same `mcp-http-*.js`
@@ -113,16 +136,19 @@ let _mcpBootstrapAttempted = false;
 export async function getMcpLoopback(): Promise<
   { port: number; token: string } | undefined
 > {
+  const envLoopback = getEnvMcpLoopback();
+  if (envLoopback) return envLoopback;
+
   if (_mcpLoopback) return _mcpLoopback;
   if (_mcpBootstrapAttempted) return undefined;
   _mcpBootstrapAttempted = true;
 
   try {
     const { readdir } = await import("node:fs/promises");
-    const nodePaths = (process.env.NODE_PATH ?? "").split(":");
+    const nodePaths = (process.env.NODE_PATH ?? "").split(delimiter);
     const distDirs = nodePaths
-      .filter((p) => p.includes("openclaw"))
-      .map((p) => p.replace(/\/node_modules\/?$/, "/dist"));
+      .map(openClawDistFromNodePath)
+      .filter((p): p is string => Boolean(p));
 
     for (const distDir of distDirs) {
       try {
@@ -132,7 +158,7 @@ export async function getMcpLoopback(): Promise<
         );
         if (!mcpFile) continue;
         const mod = (await import(
-          `file://${distDir}/${mcpFile}`
+          pathToFileURL(join(distDir, mcpFile)).href
         )) as Record<string, unknown>;
         // Minified aliases: n=ensureMcpLoopbackServer, i=getActiveMcpLoopbackRuntime
         const ensureFn = (mod["n"] ?? mod["ensureMcpLoopbackServer"]) as
@@ -141,7 +167,10 @@ export async function getMcpLoopback(): Promise<
         const getRuntime = (mod["i"] ?? mod["getActiveMcpLoopbackRuntime"]) as
           | (() => McpLoopbackRuntime | undefined)
           | undefined;
-        if (typeof ensureFn !== "function" || typeof getRuntime !== "function") {
+        if (
+          typeof ensureFn !== "function" ||
+          typeof getRuntime !== "function"
+        ) {
           continue;
         }
         await ensureFn();
