@@ -50,6 +50,18 @@ The only way this breaks is if Anthropic changes how `--system-prompt` or `--out
 
 Switch in TUI: `/model glueclaw/glueclaw-opus`
 
+## Configuration
+
+| Env var                       | Default  | Description                                                                                                                                                                                                                                                                 |
+| ----------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GLUECLAW_REQUEST_TIMEOUT_MS` | `120000` | Maximum time (in milliseconds) to wait for the Claude CLI subprocess to complete a single request before it is terminated. Increase if long-running tool calls or extensive reasoning trip the default 120s limit. Invalid or non-positive values fall back to the default. |
+
+Example (10 minute timeout):
+
+```bash
+export GLUECLAW_REQUEST_TIMEOUT_MS=600000
+```
+
 ## Notes
 
 - Tested with Telegram and OpenClaw TUI

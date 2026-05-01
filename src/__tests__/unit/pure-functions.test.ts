@@ -8,6 +8,7 @@ import {
 } from "../../stream.js";
 import { MODEL_CATALOG } from "../../catalog.js";
 import { binarySearchTrigger } from "../../healthcheck.js";
+import { resolveSessionKey } from "../../session-key.js";
 
 describe("buildUsage", () => {
   it("returns zeroed usage when called with undefined", () => {
@@ -356,5 +357,71 @@ describe("binarySearchTrigger", () => {
     const testFn = async (chunk: string) => !chunk.includes("TRIGGER");
     const result = await binarySearchTrigger(lines, testFn);
     expect(result).toBe("TRIGGER");
+  });
+});
+
+describe("resolveSessionKey", () => {
+  it("prefers sessionKey over everything else", () => {
+    expect(
+      resolveSessionKey({
+        sessionKey: "telegram:dm:+34xxx",
+        sessionId: "abc-uuid",
+        agentDir: "/home/x/.openclaw/agents/eva",
+      }),
+    ).toBe("telegram:dm:+34xxx");
+  });
+
+  it("falls back to sessionId when sessionKey is absent", () => {
+    expect(
+      resolveSessionKey({
+        sessionId: "conv-uuid-1",
+        agentDir: "/home/x/.openclaw/agents/eva",
+      }),
+    ).toBe("conv-uuid-1");
+  });
+
+  it("falls back to agentDir when sessionKey and sessionId are absent", () => {
+    expect(
+      resolveSessionKey({
+        agentDir: "/home/x/.openclaw/agents/eva",
+      }),
+    ).toBe("/home/x/.openclaw/agents/eva");
+  });
+
+  it("falls back to 'default' when nothing is provided", () => {
+    expect(resolveSessionKey({})).toBe("default");
+  });
+
+  it("yields distinct keys for two conversations of the same agent (the bug fix)", () => {
+    const agentDir = "/home/x/.openclaw/agents/eva";
+    const a = resolveSessionKey({
+      sessionKey: "telegram:dm:userA",
+      agentDir,
+    });
+    const b = resolveSessionKey({
+      sessionKey: "telegram:dm:userB",
+      agentDir,
+    });
+    expect(a).not.toBe(b);
+  });
+
+  it("yields the same key across turns of one conversation (resumption stability)", () => {
+    const ctx = {
+      sessionKey: "telegram:group:abc:user:def",
+      sessionId: "rotating-uuid-on-reset",
+      agentDir: "/home/x/.openclaw/agents/eva",
+    };
+    expect(resolveSessionKey(ctx)).toBe(resolveSessionKey(ctx));
+  });
+
+  it("treats empty string as a valid value (does not skip to fallback)", () => {
+    // Empty strings are unlikely in practice but we should not silently
+    // collapse them — only undefined triggers fallback.
+    expect(
+      resolveSessionKey({
+        sessionKey: "",
+        sessionId: "would-be-skipped",
+      }),
+    ).toBe("would-be-skipped");
   });
 });

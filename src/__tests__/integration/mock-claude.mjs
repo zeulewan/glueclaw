@@ -116,6 +116,20 @@ switch (scenario) {
     });
     break;
 
+  case "env-echo":
+    emit({ type: "system", subtype: "init", session_id: sessionId });
+    emit({
+      type: "result",
+      session_id: sessionId,
+      result: JSON.stringify({
+        OPENCLAW_MCP_AGENT_ID: process.env.OPENCLAW_MCP_AGENT_ID ?? null,
+        OPENCLAW_MCP_SESSION_KEY: process.env.OPENCLAW_MCP_SESSION_KEY ?? null,
+        OPENCLAW_MCP_TOKEN: process.env.OPENCLAW_MCP_TOKEN ?? null,
+      }),
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    break;
+
   case "hang":
     // Emit init then hang forever — never emits result
     emit({ type: "system", subtype: "init", session_id: sessionId });
