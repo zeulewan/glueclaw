@@ -30,7 +30,7 @@ git clone https://github.com/zeulewan/glueclaw.git \
   && cd glueclaw && bash install.sh
 ```
 
-The installer is idempotent. Re-run after OpenClaw updates to re-apply patches.
+The installer is idempotent. Re-run after OpenClaw updates to refresh plugin registration and model config.
 
 ## Verify
 

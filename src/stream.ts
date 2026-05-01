@@ -7,12 +7,14 @@ import {
   rmSync,
   renameSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, delimiter, dirname, join, normalize } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { createAssistantMessageEventStream } from "@mariozechner/pi-ai";
 import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, Usage, TextContent } from "@mariozechner/pi-ai";
+import { deriveTurnSessionKey } from "./session-key.js";
 
 const PROCESS_TIMEOUT_MS = 5000;
 const REQUEST_TIMEOUT_MS = 120_000;
@@ -91,12 +93,99 @@ export function buildMsg(
   };
 }
 
-/** Get the MCP loopback port and token from process.env.
- *  The gateway patches write these during MCP server startup. */
-export function getMcpLoopback(): { port: number; token: string } | undefined {
-  const port = process.env.__GLUECLAW_MCP_PORT;
+interface McpLoopbackRuntime {
+  port: number;
+  ownerToken: string;
+  nonOwnerToken?: string;
+}
+
+let _mcpLoopback: { port: number; token: string } | undefined;
+let _mcpBootstrapAttempted = false;
+
+function getEnvMcpLoopback(): { port: number; token: string } | undefined {
+  const portRaw = process.env.__GLUECLAW_MCP_PORT;
   const token = process.env.__GLUECLAW_MCP_TOKEN;
-  if (port && token) return { port: parseInt(port, 10), token };
+  if (!portRaw || !token) return undefined;
+
+  const port = Number.parseInt(portRaw, 10);
+  if (!Number.isFinite(port) || port <= 0) return undefined;
+  return { port, token };
+}
+
+function openClawDistFromNodePath(nodePath: string): string | undefined {
+  const normalized = normalize(nodePath);
+  if (!normalized.includes("openclaw")) return undefined;
+  if (basename(normalized) !== "node_modules") return undefined;
+  return join(dirname(normalized), "dist");
+}
+
+export function resetMcpLoopbackForTests(): void {
+  _mcpLoopback = undefined;
+  _mcpBootstrapAttempted = false;
+}
+
+/** Bootstrap OpenClaw's MCP loopback server in-process and return the
+ *  port + owner token. GlueClaw runs inside the gateway process, so we
+ *  share OpenClaw's module cache: importing the same `mcp-http-*.js`
+ *  the gateway loaded gives us the singleton, and a no-op when another
+ *  caller already started it.
+ *
+ *  Returns undefined if the OpenClaw dist cannot be located or its API
+ *  has changed — in that case the claude subprocess simply runs without
+ *  session tools, matching pre-RFC-001 behavior. */
+export async function getMcpLoopback(): Promise<
+  { port: number; token: string } | undefined
+> {
+  const envLoopback = getEnvMcpLoopback();
+  if (envLoopback) return envLoopback;
+
+  if (_mcpLoopback) return _mcpLoopback;
+  if (_mcpBootstrapAttempted) return undefined;
+  _mcpBootstrapAttempted = true;
+
+  try {
+    const { readdir } = await import("node:fs/promises");
+    const nodePaths = (process.env.NODE_PATH ?? "").split(delimiter);
+    const distDirs = nodePaths
+      .map(openClawDistFromNodePath)
+      .filter((p): p is string => Boolean(p));
+
+    for (const distDir of distDirs) {
+      try {
+        const files = await readdir(distDir);
+        const mcpFile = files.find(
+          (f) => f.startsWith("mcp-http-") && f.endsWith(".js"),
+        );
+        if (!mcpFile) continue;
+        const mod = (await import(
+          pathToFileURL(join(distDir, mcpFile)).href
+        )) as Record<string, unknown>;
+        // Minified aliases: n=ensureMcpLoopbackServer, i=getActiveMcpLoopbackRuntime
+        const ensureFn = (mod["n"] ?? mod["ensureMcpLoopbackServer"]) as
+          | (() => Promise<unknown>)
+          | undefined;
+        const getRuntime = (mod["i"] ?? mod["getActiveMcpLoopbackRuntime"]) as
+          | (() => McpLoopbackRuntime | undefined)
+          | undefined;
+        if (
+          typeof ensureFn !== "function" ||
+          typeof getRuntime !== "function"
+        ) {
+          continue;
+        }
+        await ensureFn();
+        const runtime = getRuntime();
+        if (runtime?.port && runtime.ownerToken) {
+          _mcpLoopback = { port: runtime.port, token: runtime.ownerToken };
+          return _mcpLoopback;
+        }
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    // Non-fatal: session tools simply won't be available
+  }
   return undefined;
 }
 
@@ -184,6 +273,15 @@ export function createClaudeCliStreamFn(opts: {
       let mcpCleanup: (() => void) | undefined;
       let stderrBuf = "";
       try {
+        const turnSessionKey = deriveTurnSessionKey({
+          agentId: opts.agentId,
+          systemPrompt: context.systemPrompt,
+          messages: context.messages as
+            | Array<{ role: string; content: unknown }>
+            | undefined,
+        });
+        const effectiveSessionKey =
+          turnSessionKey ?? opts.sessionKey ?? "default";
         // Scrub Anthropic detection triggers (see docs/detection-patterns.md)
         const cleanPrompt = scrubPrompt(context.systemPrompt ?? "");
         const resolvedModel = opts.modelOverride ?? model.id;
@@ -200,7 +298,7 @@ export function createClaudeCliStreamFn(opts: {
         // otherwise stick to whatever identity was used on the first turn,
         // leaving no way for callers to reinforce or correct an agent's
         // identity across turns.
-        const sessionKey = `glueclaw:${opts.sessionKey ?? "default"}`;
+        const sessionKey = `glueclaw:${effectiveSessionKey}`;
         const existingSessionId = sessionMap.get(sessionKey);
         if (existingSessionId) {
           args.push("--resume", existingSessionId);
@@ -230,13 +328,13 @@ export function createClaudeCliStreamFn(opts: {
         delete env.ANTHROPIC_API_KEY_OLD;
 
         // Wire up MCP bridge for OpenClaw gateway tools
-        const loopback = getMcpLoopback();
+        const loopback = await getMcpLoopback();
         if (loopback) {
           const mcp = writeMcpConfig(loopback.port);
           mcpCleanup = mcp.cleanup;
           args.push("--strict-mcp-config", "--mcp-config", mcp.path);
           env.OPENCLAW_MCP_TOKEN = loopback.token;
-          env.OPENCLAW_MCP_SESSION_KEY = opts.sessionKey ?? "";
+          env.OPENCLAW_MCP_SESSION_KEY = effectiveSessionKey;
           env.OPENCLAW_MCP_AGENT_ID = opts.agentId ?? "main";
           env.OPENCLAW_MCP_ACCOUNT_ID = "";
           env.OPENCLAW_MCP_MESSAGE_CHANNEL = "";
