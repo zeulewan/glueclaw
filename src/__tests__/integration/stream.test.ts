@@ -625,6 +625,19 @@ describe("stale --resume recovery", () => {
     expect(saved[`glueclaw:${sessionKey}`]).toBeUndefined();
   });
 
+  it("surfaces claude's data.result text when errors[] is empty (e.g. 401 auth)", async () => {
+    const sessionKey = `auth-err-${Date.now()}-${Math.random()}`;
+    const events = await collectEvents("auth-error", { sessionKey });
+    const errorEvent = events.find((e) => e.type === "error");
+    expect(errorEvent).toBeDefined();
+    const errorText = (errorEvent as any).error.content[0].text;
+    expect(errorText).toMatch(/Failed to authenticate/i);
+    expect(errorText).toMatch(/401/);
+    // Must not leak the misleading "returned success" wording from the
+    // pre-fix error path.
+    expect(errorText).not.toMatch(/returned success/);
+  });
+
   it("drops a previously-cached resume id when claude reports it stale", async () => {
     const sessionKey = `resume-err-drop-${Date.now()}-${Math.random()}`;
     const sessFile = join(

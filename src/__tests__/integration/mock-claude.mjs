@@ -123,6 +123,26 @@ switch (scenario) {
     });
     break;
 
+  case "auth-error":
+    // Mimic real claude when OAuth has lapsed: result event with
+    // subtype="success" (the schema tag), is_error=true, the actual
+    // error text in `result`, and api_error_status set. No errors[]
+    // array — surfacing the real text requires reading data.result.
+    emit({
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      api_error_status: 401,
+      result: "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+      session_id: sessionId,
+      duration_ms: 0,
+      duration_api_ms: 0,
+      stop_reason: "stop_sequence",
+      num_turns: 1,
+      usage: {},
+    });
+    break;
+
   case "cwd-echo":
     emit({ type: "system", subtype: "init", session_id: sessionId });
     emit({

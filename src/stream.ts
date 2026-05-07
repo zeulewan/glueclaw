@@ -612,10 +612,23 @@ export function createClaudeCliStreamFn(opts: {
                 sessionStore.map.delete(sessionKey);
                 persistStore(sessionStore);
               }
+              // Pick the most informative error string claude emitted:
+              //   - errors[] (e.g. "No conversation found with session ID: …")
+              //   - result   (e.g. "Failed to authenticate. API Error: 401 …")
+              //   - api_error_status alone (e.g. 401, 429)
+              // data.subtype is intentionally not used: even on real errors
+              // it can be the literal string "success" (it tags the result
+              // schema, not the outcome).
+              const apiStatus = (data as { api_error_status?: unknown })
+                .api_error_status;
               const errText =
                 Array.isArray(data.errors) && data.errors.length > 0
                   ? data.errors.join("; ")
-                  : `claude CLI returned ${data.subtype ?? "an error"}`;
+                  : typeof data.result === "string" && data.result.trim()
+                    ? data.result.trim()
+                    : typeof apiStatus === "number"
+                      ? `claude CLI failed with HTTP ${apiStatus}`
+                      : "claude CLI returned an error";
               throw new Error(errText);
             }
             // Only use result text if nothing came through streaming or assistant
