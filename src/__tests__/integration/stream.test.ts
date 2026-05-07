@@ -566,3 +566,130 @@ describe("prompt extraction", () => {
     expect(args.at(-1)).toBe("second");
   });
 });
+
+/**
+ * Regression: zeulewan/glueclaw#37
+ *
+ * When claude returns is_error/error_during_execution because the cached
+ * --resume id is stale, GlueClaw must:
+ *  - NOT persist the new (useless) session_id from the error response
+ *  - DROP the cached resume id from sessions.json so the next turn starts fresh
+ *  - SURFACE the actual error message instead of falling back to "(no response)"
+ */
+describe("stale --resume recovery", () => {
+  it("emits an error event carrying the claude-side error text", async () => {
+    const sessionKey = `resume-err-${Date.now()}-${Math.random()}`;
+    const events = await collectEvents("resume-error", {
+      sessionKey,
+    });
+    const errorEvent = events.find((e) => e.type === "error");
+    expect(errorEvent).toBeDefined();
+    const errorText = (errorEvent as any).error.content[0].text;
+    expect(errorText).toMatch(/No conversation found/i);
+  });
+
+  it("does not persist the bogus session_id from an error result", async () => {
+    const sessionKey = `resume-err-noPersist-${Date.now()}-${Math.random()}`;
+    const sessFile = join(
+      process.env.HOME ?? tmpdir(),
+      ".glueclaw",
+      "sessions.json",
+    );
+    await collectEvents("resume-error", { sessionKey });
+    const saved = JSON.parse(readFileSync(sessFile, "utf8"));
+    expect(saved[`glueclaw:${sessionKey}`]).toBeUndefined();
+  });
+
+  it("drops a previously-cached resume id when claude reports it stale", async () => {
+    const sessionKey = `resume-err-drop-${Date.now()}-${Math.random()}`;
+    const sessFile = join(
+      process.env.HOME ?? tmpdir(),
+      ".glueclaw",
+      "sessions.json",
+    );
+
+    // Step 1: a successful "simple" run primes the sessionMap with the mock
+    // session id "test-session-123".
+    await collectEvents("simple", { sessionKey });
+    let saved = JSON.parse(readFileSync(sessFile, "utf8"));
+    expect(saved[`glueclaw:${sessionKey}`]).toBe("test-session-123");
+
+    // Step 2: a follow-up turn against the resume-error scenario simulates
+    // claude rejecting the cached id. The cached id must be dropped on disk.
+    await collectEvents("resume-error", { sessionKey });
+    saved = JSON.parse(readFileSync(sessFile, "utf8"));
+    expect(saved[`glueclaw:${sessionKey}`]).toBeUndefined();
+  });
+});
+
+/**
+ * Regression: zeulewan/glueclaw#38
+ *
+ * When OpenClaw passes ctx.workspaceDir, claude is spawned with that as cwd
+ * and sessions are persisted under <workspaceDir>/.glueclaw/sessions.json
+ * instead of the legacy ~/.glueclaw global directory.
+ */
+describe("workspaceDir migration", () => {
+  it("spawns claude with workspaceDir as cwd when provided", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const wsDir = mkdtempSync(join(tmpdir(), "gc-ws-cwd-"));
+    const origScenario = process.env.MOCK_SCENARIO;
+    process.env.MOCK_SCENARIO = "cwd-echo";
+    try {
+      const streamFn = createClaudeCliStreamFn({
+        claudeBin: MOCK_CLI,
+        sessionKey: `ws-cwd-${Date.now()}`,
+        workspaceDir: wsDir,
+        modelOverride: "claude-sonnet-4-6",
+      });
+      const stream = await streamFn(
+        { id: "glueclaw-sonnet", api: "anthropic-messages", provider: "glueclaw" } as any,
+        { systemPrompt: "", messages: [{ role: "user", content: "x" }] } as any,
+        {},
+      );
+      let cwdReported = "";
+      for await (const ev of stream) {
+        if ((ev as any).type === "done") {
+          cwdReported = (ev as any).message.content[0].text;
+        }
+      }
+      // realpath: macOS /var → /private/var; tmpdir on linux is just /tmp
+      expect(cwdReported).toContain(wsDir.replace(/^\/var\//, "/private/var/"));
+    } finally {
+      if (origScenario !== undefined) process.env.MOCK_SCENARIO = origScenario;
+      else delete process.env.MOCK_SCENARIO;
+    }
+  });
+
+  it("persists sessions under <workspaceDir>/.glueclaw/sessions.json", async () => {
+    const { mkdtempSync, existsSync } = await import("node:fs");
+    const wsDir = mkdtempSync(join(tmpdir(), "gc-ws-sess-"));
+    const sessionKey = `ws-persist-${Date.now()}-${Math.random()}`;
+    const origScenario = process.env.MOCK_SCENARIO;
+    process.env.MOCK_SCENARIO = "simple";
+    try {
+      const streamFn = createClaudeCliStreamFn({
+        claudeBin: MOCK_CLI,
+        sessionKey,
+        workspaceDir: wsDir,
+        modelOverride: "claude-sonnet-4-6",
+      });
+      const stream = await streamFn(
+        { id: "glueclaw-sonnet", api: "anthropic-messages", provider: "glueclaw" } as any,
+        { systemPrompt: "", messages: [{ role: "user", content: "x" }] } as any,
+        {},
+      );
+      // drain
+      for await (const _ of stream) {
+        /* noop */
+      }
+    } finally {
+      if (origScenario !== undefined) process.env.MOCK_SCENARIO = origScenario;
+      else delete process.env.MOCK_SCENARIO;
+    }
+    const wsSessionsFile = join(wsDir, ".glueclaw", "sessions.json");
+    expect(existsSync(wsSessionsFile)).toBe(true);
+    const saved = JSON.parse(readFileSync(wsSessionsFile, "utf8"));
+    expect(saved[`glueclaw:${sessionKey}`]).toBe("test-session-123");
+  });
+});

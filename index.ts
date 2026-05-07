@@ -101,11 +101,13 @@ export default definePluginEntry({
         agentDir?: string;
         sessionId?: string;
         sessionKey?: string;
+        workspaceDir?: string;
       }) => {
         const realModel = MODEL_MAP[ctx.modelId] ?? ctx.modelId;
         return createClaudeCliStreamFn({
           sessionKey: resolveSessionKey(ctx),
           agentId: resolveAgentId(ctx),
+          workspaceDir: ctx.workspaceDir,
           modelOverride: realModel,
           requestTimeoutMs: resolveRequestTimeoutMs(),
         });

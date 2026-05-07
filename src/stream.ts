@@ -26,6 +26,8 @@ interface StreamEventData {
   subtype?: string;
   session_id?: string;
   result?: string;
+  is_error?: boolean;
+  errors?: string[];
   usage?: Record<string, number>;
   event?: {
     delta?: { type?: string; text?: string };
@@ -36,29 +38,56 @@ interface StreamEventData {
 }
 
 /** Track claude session IDs per session key for multi-turn resume.
- *  Persisted to disk so sessions survive gateway restarts. */
-const GC_HOME = join(process.env.HOME ?? tmpdir(), ".glueclaw");
-const SESSION_FILE = join(GC_HOME, "sessions.json");
-const sessionMap = new Map<string, string>();
+ *  Persisted next to the active OpenClaw agent workspace so each agent gets
+ *  its own session cache (see zeulewan/glueclaw#38). The legacy
+ *  `~/.glueclaw/sessions.json` location is only used as a fallback for
+ *  callers that don't pass a workspaceDir (older OpenClaw runtimes). */
+const LEGACY_GC_HOME = join(process.env.HOME ?? tmpdir(), ".glueclaw");
+const LEGACY_SESSION_FILE = join(LEGACY_GC_HOME, "sessions.json");
 
-// Load persisted sessions on startup
-try {
-  const saved = JSON.parse(readFileSync(SESSION_FILE, "utf8"));
-  for (const [k, v] of Object.entries(saved)) {
-    if (typeof v === "string") sessionMap.set(k, v);
-  }
-} catch {
-  // Expected on first run when session file doesn't exist
+type SessionStore = { filePath: string; map: Map<string, string> };
+const sessionStores = new Map<string, SessionStore>();
+
+function sessionFilePath(workspaceDir?: string): string {
+  return workspaceDir
+    ? join(workspaceDir, ".glueclaw", "sessions.json")
+    : LEGACY_SESSION_FILE;
 }
 
-export function persistSessions(): void {
+function getSessionStore(workspaceDir?: string): SessionStore {
+  const filePath = sessionFilePath(workspaceDir);
+  let store = sessionStores.get(filePath);
+  if (!store) {
+    const map = new Map<string, string>();
+    try {
+      const saved = JSON.parse(readFileSync(filePath, "utf8"));
+      for (const [k, v] of Object.entries(saved)) {
+        if (typeof v === "string") map.set(k, v);
+      }
+    } catch {
+      // Expected on first run when session file doesn't exist
+    }
+    store = { filePath, map };
+    sessionStores.set(filePath, store);
+  }
+  return store;
+}
+
+function persistStore(store: SessionStore): void {
   try {
-    const tmp = SESSION_FILE + ".tmp";
-    writeFileSync(tmp, JSON.stringify(Object.fromEntries(sessionMap)));
-    renameSync(tmp, SESSION_FILE); // Atomic on most filesystems
+    mkdirSync(dirname(store.filePath), { recursive: true });
+    const tmp = store.filePath + ".tmp";
+    writeFileSync(tmp, JSON.stringify(Object.fromEntries(store.map)));
+    renameSync(tmp, store.filePath); // Atomic on most filesystems
   } catch {
     // Best-effort persistence — non-fatal if disk write fails
   }
+}
+
+/** Persist all known session stores to disk. Exported for tests and callers
+ *  that want to flush state explicitly. */
+export function persistSessions(): void {
+  for (const store of sessionStores.values()) persistStore(store);
 }
 
 export function buildUsage(raw?: Record<string, number>): Usage {
@@ -279,11 +308,11 @@ export function extractPromptText(messages: MessageLike[] | undefined): string {
   return "";
 }
 
-/** Evict oldest sessions when map exceeds MAX_SESSIONS */
-function evictSessions(): void {
-  while (sessionMap.size > MAX_SESSIONS) {
-    const oldest = sessionMap.keys().next().value;
-    if (oldest !== undefined) sessionMap.delete(oldest);
+/** Evict oldest sessions when a workspace's map exceeds MAX_SESSIONS */
+function evictStore(store: SessionStore): void {
+  while (store.map.size > MAX_SESSIONS) {
+    const oldest = store.map.keys().next().value;
+    if (oldest !== undefined) store.map.delete(oldest);
     else break;
   }
 }
@@ -292,6 +321,7 @@ export function createClaudeCliStreamFn(opts: {
   claudeBin?: string;
   sessionKey?: string;
   agentId?: string;
+  workspaceDir?: string;
   modelOverride?: string;
   requestTimeoutMs?: number;
 }): StreamFn {
@@ -331,7 +361,8 @@ export function createClaudeCliStreamFn(opts: {
         // leaving no way for callers to reinforce or correct an agent's
         // identity across turns.
         const sessionKey = `glueclaw:${effectiveSessionKey}`;
-        const existingSessionId = sessionMap.get(sessionKey);
+        const sessionStore = getSessionStore(opts.workspaceDir);
+        const existingSessionId = sessionStore.map.get(sessionKey);
         if (existingSessionId) {
           args.push("--resume", existingSessionId);
         }
@@ -371,12 +402,15 @@ export function createClaudeCliStreamFn(opts: {
           env.OPENCLAW_MCP_MESSAGE_CHANNEL = "";
         }
 
-        // Use persistent dir so claude sessions survive restarts
-        const gcHome = join(process.env.HOME ?? "/tmp", ".glueclaw");
-        mkdirSync(gcHome, { recursive: true });
+        // Anchor Claude's project storage at the active OpenClaw agent
+        // workspace so per-agent state stays isolated. Falls back to the
+        // legacy global directory only when the runtime didn't surface a
+        // workspaceDir (older OpenClaw versions).
+        const claudeCwd = opts.workspaceDir ?? LEGACY_GC_HOME;
+        mkdirSync(claudeCwd, { recursive: true });
         const proc = spawn(claudeBin, args, {
           stdio: ["pipe", "pipe", "pipe"],
-          cwd: gcHome,
+          cwd: claudeCwd,
           env,
         });
         if (options?.signal)
@@ -463,9 +497,9 @@ export function createClaudeCliStreamFn(opts: {
           if (type === "system" && data.subtype === "init") {
             const sid = data.session_id;
             if (sid) {
-              sessionMap.set(sessionKey, sid);
-              evictSessions();
-              persistSessions();
+              sessionStore.map.set(sessionKey, sid);
+              evictStore(sessionStore);
+              persistStore(sessionStore);
             }
             continue;
           }
@@ -547,11 +581,33 @@ export function createClaudeCliStreamFn(opts: {
 
           // Result event (final) - authoritative response
           if (type === "result") {
+            const isError =
+              data.is_error === true ||
+              data.subtype === "error_during_execution";
             const sid = data.session_id;
-            if (sid) {
-              sessionMap.set(sessionKey, sid);
-              evictSessions();
-              persistSessions();
+            if (sid && !isError) {
+              // Only persist the session id from a successful turn —
+              // claude emits a fresh session_id even on hard failures
+              // (e.g. stale --resume), and persisting that id would
+              // perpetuate the failure on every subsequent turn.
+              // See zeulewan/glueclaw#37.
+              sessionStore.map.set(sessionKey, sid);
+              evictStore(sessionStore);
+              persistStore(sessionStore);
+            }
+            if (isError) {
+              // The cached resume id is the most likely culprit (claude
+              // reports a missing conversation when the id has gone
+              // stale). Drop it so the next turn starts a fresh session.
+              if (existingSessionId) {
+                sessionStore.map.delete(sessionKey);
+                persistStore(sessionStore);
+              }
+              const errText =
+                Array.isArray(data.errors) && data.errors.length > 0
+                  ? data.errors.join("; ")
+                  : `claude CLI returned ${data.subtype ?? "an error"}`;
+              throw new Error(errText);
             }
             // Only use result text if nothing came through streaming or assistant
             if (!text) {
