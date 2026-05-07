@@ -8,7 +8,7 @@ Uses the official Claude CLI and scrubs out [Anthropic's detection triggers](doc
 
 ## Install
 
-Requires [OpenClaw](https://docs.openclaw.ai) 2026.4.10+, [Claude Code](https://claude.ai/claude-code) logged in with Max, and Node.js 22+. Non-destructive, won't touch your existing config or sessions.
+Requires [OpenClaw](https://docs.openclaw.ai) (2026.4.10+ minimum, 2026.5.x+ for full per-agent isolation), [Claude Code](https://claude.ai/claude-code) logged in with Max, and Node.js 22+. Non-destructive, won't touch your existing config or sessions.
 
 ### npm (recommended)
 

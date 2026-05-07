@@ -10,9 +10,9 @@ OpenClaw provider plugin that routes inference through the Claude CLI using a Ma
 
 ## Prerequisites
 
-- [OpenClaw](https://docs.openclaw.ai) 2026.4.10+
-- [Claude Code](https://claude.ai/claude-code) logged in with Max
-- Node.js 22+
+- [OpenClaw](https://docs.openclaw.ai) — 2026.4.10+ minimum (degraded: per-agent state collapses into the legacy global `~/.glueclaw` directory). 2026.5.x+ recommended for full per-agent isolation via `ProviderCreateStreamFnContext.workspaceDir`.
+- [Claude Code](https://claude.ai/claude-code) logged in with Max.
+- Node.js 22+.
 
 ## Install
 
