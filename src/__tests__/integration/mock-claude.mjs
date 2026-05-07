@@ -133,7 +133,8 @@ switch (scenario) {
       subtype: "success",
       is_error: true,
       api_error_status: 401,
-      result: "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+      result:
+        "Failed to authenticate. API Error: 401 Invalid authentication credentials",
       session_id: sessionId,
       duration_ms: 0,
       duration_api_ms: 0,

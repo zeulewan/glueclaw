@@ -681,7 +681,11 @@ describe("workspaceDir migration", () => {
         modelOverride: "claude-sonnet-4-6",
       });
       const stream = await streamFn(
-        { id: "glueclaw-sonnet", api: "anthropic-messages", provider: "glueclaw" } as any,
+        {
+          id: "glueclaw-sonnet",
+          api: "anthropic-messages",
+          provider: "glueclaw",
+        } as any,
         { systemPrompt: "", messages: [{ role: "user", content: "x" }] } as any,
         {},
       );
@@ -713,7 +717,11 @@ describe("workspaceDir migration", () => {
         modelOverride: "claude-sonnet-4-6",
       });
       const stream = await streamFn(
-        { id: "glueclaw-sonnet", api: "anthropic-messages", provider: "glueclaw" } as any,
+        {
+          id: "glueclaw-sonnet",
+          api: "anthropic-messages",
+          provider: "glueclaw",
+        } as any,
         { systemPrompt: "", messages: [{ role: "user", content: "x" }] } as any,
         {},
       );

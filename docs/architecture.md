@@ -28,7 +28,7 @@ OpenClaw provider plugin that spawns Claude CLI subprocesses using Max plan OAut
    - `stream_event` with `text_delta` — accumulated and forwarded to the gateway.
    - `assistant` — fallback text source if no streaming deltas arrived.
    - `result` — terminal event. If `is_error: true` or `subtype: "error_during_execution"`, the cached session id is dropped and an error event is emitted carrying the real claude error text.
-8. Response tokens are unscrubbed (3 renamed tokens translated back) and emitted to the gateway as `start` → `text_delta`* → `done`.
+8. Response tokens are unscrubbed (3 renamed tokens translated back) and emitted to the gateway as `start` → `text_delta`\* → `done`.
 
 ## Auth model
 
@@ -133,24 +133,24 @@ Re-run after OpenClaw updates to refresh plugin registration and model config.
 
 ## Source files
 
-| File                          | Purpose                                                                            |
-| ----------------------------- | ---------------------------------------------------------------------------------- |
-| `index.ts`                    | Plugin entry: provider registration, model catalog, ctx → opts wiring              |
-| `src/stream.ts`               | Subprocess spawn, NDJSON parsing, scrub/unscrub, per-workspace session store, MCP  |
-| `src/session-key.ts`          | `resolveSessionKey`, `resolveAgentId`, `deriveTurnSessionKey`, metadata helpers    |
-| `src/catalog.ts`              | Model catalog augmentation                                                         |
-| `src/healthcheck.ts`          | Detection-trigger binary search helpers                                            |
-| `src/openclaw.d.ts`           | Type declarations for the OpenClaw plugin SDK                                      |
-| `openclaw.plugin.json`        | Plugin manifest: provider id, auth env vars, auth choices                          |
-| `install.sh`                  | Installer: deps, config, auth, gateway startup                                     |
-| `vitest.config.ts`            | Test runner config (forks pool, 30s timeout)                                       |
+| File                   | Purpose                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| `index.ts`             | Plugin entry: provider registration, model catalog, ctx → opts wiring             |
+| `src/stream.ts`        | Subprocess spawn, NDJSON parsing, scrub/unscrub, per-workspace session store, MCP |
+| `src/session-key.ts`   | `resolveSessionKey`, `resolveAgentId`, `deriveTurnSessionKey`, metadata helpers   |
+| `src/catalog.ts`       | Model catalog augmentation                                                        |
+| `src/healthcheck.ts`   | Detection-trigger binary search helpers                                           |
+| `src/openclaw.d.ts`    | Type declarations for the OpenClaw plugin SDK                                     |
+| `openclaw.plugin.json` | Plugin manifest: provider id, auth env vars, auth choices                         |
+| `install.sh`           | Installer: deps, config, auth, gateway startup                                    |
+| `vitest.config.ts`     | Test runner config (forks pool, 30s timeout)                                      |
 
 ## Test coverage
 
 117 automated tests across three layers. See [testing](testing.md) for details.
 
-| Layer       | What it validates                                                                                                                                              |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unit        | `scrubPrompt`, `unscrubResponse`, `buildUsage`, `buildMsg`, `resolveSessionKey`, `resolveAgentId`, `deriveTurnSessionKey`, MCP config/bootstrap                |
-| Integration | Mock CLI NDJSON scenarios, request timeout, stderr capture, MCP env stamping, system prompt resume, concurrency, stale-resume recovery, workspaceDir routing  |
-| E2E         | Real Claude CLI with Max plan OAuth, session resume, OpenClaw plugin registration                                                                              |
+| Layer       | What it validates                                                                                                                                            |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Unit        | `scrubPrompt`, `unscrubResponse`, `buildUsage`, `buildMsg`, `resolveSessionKey`, `resolveAgentId`, `deriveTurnSessionKey`, MCP config/bootstrap              |
+| Integration | Mock CLI NDJSON scenarios, request timeout, stderr capture, MCP env stamping, system prompt resume, concurrency, stale-resume recovery, workspaceDir routing |
+| E2E         | Real Claude CLI with Max plan OAuth, session resume, OpenClaw plugin registration                                                                            |

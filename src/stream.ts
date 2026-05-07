@@ -301,9 +301,7 @@ function isOpenClawRuntimeMetadata(text: string): boolean {
   //   - "Conversation info (untrusted metadata):"
   // Match the suffix on the first non-empty line so we recognize current
   // and future labels without churning this list. See zeulewan/glueclaw#39.
-  const firstLine = text
-    .split(/\r?\n/, 1)[0]
-    ?.trim();
+  const firstLine = text.split(/\r?\n/, 1)[0]?.trim();
   return /\(untrusted metadata\):$/.test(firstLine ?? "");
 }
 

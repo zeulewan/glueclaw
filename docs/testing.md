@@ -26,21 +26,21 @@ RUN_LIVE_TESTS=1 npm test          # everything (~37s)
 
 ### Integration test breakdown
 
-| Test                          | What it validates                                                                                |
-| ----------------------------- | ------------------------------------------------------------------------------------------------ |
-| simple, streaming, assistant  | Basic NDJSON event parsing and stream lifecycle                                                  |
-| malformed                     | Malformed NDJSON lines skipped without crash                                                     |
-| scrub, scrub-streaming        | Detection token unscrubbing in result and delta paths                                            |
-| double-unscrub guard          | endStream doesn't re-unscrub already-processed streaming text                                    |
-| empty                         | Empty CLI output produces "(no response)" fallback                                               |
-| hang + timeout                | Request timeout kills hung process, emits error (3s test)                                        |
-| stderr capture                | CLI stderr included in error events for diagnostics                                              |
-| 4 concurrency tests           | Parallel streams, session map integrity, same-key safety, no cross-contamination                 |
-| MCP agent identity (3 tests)  | `OPENCLAW_MCP_AGENT_ID` propagation, throws (not silent fallback) when agentId is unresolved     |
-| Stale --resume recovery       | Error event surfaces real claude error text; bogus session_id from error is not persisted; cached id is dropped on resume failure |
-| Auth-error surfacing          | When `errors[]` is empty, the user-visible error uses `data.result` text and `api_error_status` (HTTP code) |
-| workspaceDir migration        | Claude is spawned with `cwd = ctx.workspaceDir`; sessions persist under `<workspaceDir>/.glueclaw/sessions.json` |
-| Prompt extraction (Telegram)  | Trailing `Conversation info (untrusted metadata):` user-role messages are skipped so the actual user text wins |
+| Test                         | What it validates                                                                                                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| simple, streaming, assistant | Basic NDJSON event parsing and stream lifecycle                                                                                   |
+| malformed                    | Malformed NDJSON lines skipped without crash                                                                                      |
+| scrub, scrub-streaming       | Detection token unscrubbing in result and delta paths                                                                             |
+| double-unscrub guard         | endStream doesn't re-unscrub already-processed streaming text                                                                     |
+| empty                        | Empty CLI output produces "(no response)" fallback                                                                                |
+| hang + timeout               | Request timeout kills hung process, emits error (3s test)                                                                         |
+| stderr capture               | CLI stderr included in error events for diagnostics                                                                               |
+| 4 concurrency tests          | Parallel streams, session map integrity, same-key safety, no cross-contamination                                                  |
+| MCP agent identity (3 tests) | `OPENCLAW_MCP_AGENT_ID` propagation, throws (not silent fallback) when agentId is unresolved                                      |
+| Stale --resume recovery      | Error event surfaces real claude error text; bogus session_id from error is not persisted; cached id is dropped on resume failure |
+| Auth-error surfacing         | When `errors[]` is empty, the user-visible error uses `data.result` text and `api_error_status` (HTTP code)                       |
+| workspaceDir migration       | Claude is spawned with `cwd = ctx.workspaceDir`; sessions persist under `<workspaceDir>/.glueclaw/sessions.json`                  |
+| Prompt extraction (Telegram) | Trailing `Conversation info (untrusted metadata):` user-role messages are skipped so the actual user text wins                    |
 
 ### What the tests prove
 

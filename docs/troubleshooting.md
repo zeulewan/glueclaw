@@ -12,7 +12,7 @@ Symptom → diagnosis index. Each section starts with the user-visible behaviour
 
 **Symptom:** `openclaw agent` (or TUI / channel inbound) returns `finalAssistantRawText: "(no response)"`, but the JSON `executionTrace.attempts[0].result` is `"success"` and `usage` is mostly zeros.
 
-**Most likely cause:** stale Claude `--resume` id. GlueClaw cached a Claude session id from a prior turn, but Claude no longer has that conversation (project storage cleared, OAuth rotated, etc.). On older GlueClaw builds, claude's error result had `is_error: true` but the empty text was masked by the `text || "(no response)"` fallback, and the bogus session id from the error response was *re-persisted*, locking the agent into a permanent failure loop.
+**Most likely cause:** stale Claude `--resume` id. GlueClaw cached a Claude session id from a prior turn, but Claude no longer has that conversation (project storage cleared, OAuth rotated, etc.). On older GlueClaw builds, claude's error result had `is_error: true` but the empty text was masked by the `text || "(no response)"` fallback, and the bogus session id from the error response was _re-persisted_, locking the agent into a permanent failure loop.
 
 **Fix on builds with the [#37](https://github.com/zeulewan/glueclaw/issues/37) fix:** the next turn auto-recovers — the cached id is dropped on first error and a real claude error surfaces in the response. Wait one turn and retry.
 
@@ -22,7 +22,7 @@ Symptom → diagnosis index. Each section starts with the user-visible behaviour
 2. Wipe the session cache:
    - Per-workspace builds: `echo '{}' > <workspaceDir>/.glueclaw/sessions.json`
    - Legacy builds: `echo '{}' > ~/.glueclaw/sessions.json`
-3. Optionally also clear claude's project transcripts at `~/.claude/projects/<encoded-cwd>/` if you want a *fully* clean slate.
+3. Optionally also clear claude's project transcripts at `~/.claude/projects/<encoded-cwd>/` if you want a _fully_ clean slate.
 4. Restart the gateway.
 
 ## Agent replies `Error: Failed to authenticate. API Error: 401 …`
@@ -39,7 +39,7 @@ Symptom → diagnosis index. Each section starts with the user-visible behaviour
 
 **Cause:** OpenClaw injects per-turn channel context as a trailing user-role message in `context.messages`. For TUI / direct paths the wrapper starts with `Sender (untrusted metadata):`. For channel inbound (e.g. Telegram), the wrapper is preceded by an extra `Conversation info (untrusted metadata):` block carrying `chat_id`, `sender_id`, etc. Older GlueClaw's prompt extractor only matched the `Sender …` prefix, so `Conversation info …` was returned as the user's "prompt" — claude saw a metadata JSON blob with no question and replied accordingly. Driven by [#39](https://github.com/zeulewan/glueclaw/issues/39).
 
-**Fix:** upgrade to a build with #39 merged. The detector now matches *any* `<Section> (untrusted metadata):` header, and the divergent session-key derivation (which still wants the `Conversation info` block to read `chat_id`) is preserved on a separate narrow filter.
+**Fix:** upgrade to a build with #39 merged. The detector now matches _any_ `<Section> (untrusted metadata):` header, and the divergent session-key derivation (which still wants the `Conversation info` block to read `chat_id`) is preserved on a separate narrow filter.
 
 ## Non-`main` agent identifies as "main" via MCP tools
 

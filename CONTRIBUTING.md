@@ -52,15 +52,15 @@ When Anthropic adds a new trigger:
 
 ## Code structure
 
-| File                 | Purpose                                                                                       |
-| -------------------- | --------------------------------------------------------------------------------------------- |
-| `index.ts`           | Plugin entry: provider/model registration, `ctx → opts` wiring                                |
-| `src/stream.ts`      | Subprocess spawn, NDJSON parsing, scrub chain, per-workspace session store, MCP bridge        |
-| `src/session-key.ts` | `resolveSessionKey`, `resolveAgentId`, `deriveTurnSessionKey`, metadata helpers               |
-| `src/catalog.ts`     | Model catalog augmentation                                                                    |
-| `src/healthcheck.ts` | Detection-trigger binary search helpers                                                       |
-| `src/openclaw.d.ts`  | OpenClaw plugin SDK type declarations                                                         |
-| `install.sh`         | Idempotent installer (deps, plugin link, model config, auth profile, gateway start)           |
+| File                 | Purpose                                                                                |
+| -------------------- | -------------------------------------------------------------------------------------- |
+| `index.ts`           | Plugin entry: provider/model registration, `ctx → opts` wiring                         |
+| `src/stream.ts`      | Subprocess spawn, NDJSON parsing, scrub chain, per-workspace session store, MCP bridge |
+| `src/session-key.ts` | `resolveSessionKey`, `resolveAgentId`, `deriveTurnSessionKey`, metadata helpers        |
+| `src/catalog.ts`     | Model catalog augmentation                                                             |
+| `src/healthcheck.ts` | Detection-trigger binary search helpers                                                |
+| `src/openclaw.d.ts`  | OpenClaw plugin SDK type declarations                                                  |
+| `install.sh`         | Idempotent installer (deps, plugin link, model config, auth profile, gateway start)    |
 
 See [docs/architecture.md](docs/architecture.md) for technical details and
 [docs/troubleshooting.md](docs/troubleshooting.md) for common issues.
