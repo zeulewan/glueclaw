@@ -5,6 +5,14 @@
   "providerAuthEnvVars": {
     "glueclaw": ["GLUECLAW_KEY"]
   },
+  "setup": {
+    "providers": [
+      {
+        "id": "glueclaw",
+        "envVars": ["GLUECLAW_KEY"]
+      }
+    ]
+  },
   "providerAuthChoices": [
     {
       "provider": "glueclaw",
