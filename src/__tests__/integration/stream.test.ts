@@ -374,6 +374,8 @@ async function captureSubprocessEnv(opts: {
     for await (const event of stream) {
       if ((event as any).type === "done") {
         resultText = (event as any).message.content[0].text;
+      } else if ((event as any).type === "error") {
+        throw new Error((event as any).error.content[0].text);
       }
     }
     return JSON.parse(resultText);
@@ -398,9 +400,10 @@ describe("MCP agent identity", () => {
     expect(env.OPENCLAW_MCP_AGENT_ID).toBe("roy");
   });
 
-  it("falls back to 'main' when opts.agentId is omitted", async () => {
-    const env = await captureSubprocessEnv({});
-    expect(env.OPENCLAW_MCP_AGENT_ID).toBe("main");
+  it("throws rather than mis-stamping when opts.agentId is omitted", async () => {
+    // Regression for zeulewan/glueclaw#36: previously fell back to "main",
+    // which silently broke MCP auth for every non-"main" agent.
+    await expect(captureSubprocessEnv({})).rejects.toThrow(/agent id/i);
   });
 
   it("propagates opts.sessionKey alongside agentId independently", async () => {

@@ -1,3 +1,5 @@
+import { basename, dirname } from "node:path";
+
 /**
  * Pick the most specific identity-bearing key OpenClaw exposed for this
  * conversation, so each conversation gets its own Claude CLI session.
@@ -24,6 +26,46 @@ export function resolveSessionKey(ctx: {
     return undefined;
   };
   return pick(ctx.sessionKey, ctx.sessionId, ctx.agentDir) ?? "default";
+}
+
+/**
+ * Resolve the OpenClaw agent id from registration context.
+ *
+ * Precedence:
+ *   1. `sessionKey` matching `agent:<agentId>:…` — the key OpenClaw mints for
+ *      gateway-driven turns. Authoritative when present.
+ *   2. `agentDir` path. Two layouts seen:
+ *        - `<state>/agents/<agentId>/agent`  → take parent basename
+ *        - `<state>/agents/<agentId>`        → take basename
+ *      A bare basename of `"agent"` is the leaf marker, not an id, and would
+ *      collapse every agent to the same string — never accept it.
+ *   3. `undefined` — caller must decide whether to fail or degrade. We never
+ *      substitute a default like `"main"` here, because identity stamping
+ *      that's wrong-but-syntactically-valid silently breaks MCP auth for
+ *      every non-default agent (see zeulewan/glueclaw#36).
+ */
+export function resolveAgentId(ctx: {
+  sessionKey?: string;
+  agentDir?: string;
+}): string | undefined {
+  const fromSessionKey = ctx.sessionKey
+    ?.trim()
+    .match(/^agent:([^:]+):/)?.[1]
+    ?.trim();
+  if (fromSessionKey) return fromSessionKey;
+
+  const dir = ctx.agentDir?.trim();
+  if (dir) {
+    const last = basename(dir);
+    if (last === "agent") {
+      const parent = basename(dirname(dir));
+      if (parent && parent !== "agents") return parent;
+    } else if (last) {
+      return last;
+    }
+  }
+
+  return undefined;
 }
 
 /**

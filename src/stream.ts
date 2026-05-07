@@ -350,12 +350,23 @@ export function createClaudeCliStreamFn(opts: {
         // Wire up MCP bridge for OpenClaw gateway tools
         const loopback = await getMcpLoopback();
         if (loopback) {
+          if (!opts.agentId) {
+            // Refuse to silently mis-stamp MCP loopback auth as a default
+            // agent — that's how zeulewan/glueclaw#36 hid behind a working
+            // setup whenever the active agent happened to be named "main".
+            throw new Error(
+              "GlueClaw cannot wire MCP loopback without a resolved agent id. " +
+                "OpenClaw did not propagate sessionKey or a parseable agentDir " +
+                "to the provider, so identity stamping would be ambiguous. " +
+                "See zeulewan/glueclaw#36.",
+            );
+          }
           const mcp = writeMcpConfig(loopback.port);
           mcpCleanup = mcp.cleanup;
           args.push("--strict-mcp-config", "--mcp-config", mcp.path);
           env.OPENCLAW_MCP_TOKEN = loopback.token;
           env.OPENCLAW_MCP_SESSION_KEY = effectiveSessionKey;
-          env.OPENCLAW_MCP_AGENT_ID = opts.agentId ?? "main";
+          env.OPENCLAW_MCP_AGENT_ID = opts.agentId;
           env.OPENCLAW_MCP_ACCOUNT_ID = "";
           env.OPENCLAW_MCP_MESSAGE_CHANNEL = "";
         }

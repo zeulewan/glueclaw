@@ -12,7 +12,11 @@ import {
 } from "../../stream.js";
 import { MODEL_CATALOG } from "../../catalog.js";
 import { binarySearchTrigger } from "../../healthcheck.js";
-import { deriveTurnSessionKey, resolveSessionKey } from "../../session-key.js";
+import {
+  deriveTurnSessionKey,
+  resolveAgentId,
+  resolveSessionKey,
+} from "../../session-key.js";
 
 describe("buildUsage", () => {
   it("returns zeroed usage when called with undefined", () => {
@@ -467,6 +471,52 @@ describe("resolveSessionKey", () => {
         sessionId: "would-be-skipped",
       }),
     ).toBe("would-be-skipped");
+  });
+});
+
+describe("resolveAgentId", () => {
+  it("extracts the agent id from a sessionKey of shape agent:<id>:…", () => {
+    expect(
+      resolveAgentId({ sessionKey: "agent:speedy:telegram:direct:1" }),
+    ).toBe("speedy");
+  });
+
+  it("prefers sessionKey over agentDir when both are present", () => {
+    expect(
+      resolveAgentId({
+        sessionKey: "agent:speedy:gateway-smoke",
+        agentDir: "/home/zeul/.openclaw/agents/main/agent",
+      }),
+    ).toBe("speedy");
+  });
+
+  it("parses the standard <state>/agents/<id>/agent layout", () => {
+    expect(
+      resolveAgentId({
+        agentDir: "/home/zeul/.openclaw/agents/speedy/agent",
+      }),
+    ).toBe("speedy");
+  });
+
+  it("parses the trimmed <state>/agents/<id> layout", () => {
+    expect(
+      resolveAgentId({ agentDir: "/home/zeul/.openclaw/agents/roy" }),
+    ).toBe("roy");
+  });
+
+  it("never returns the literal 'agent' leaf marker", () => {
+    expect(
+      resolveAgentId({ agentDir: "/some/weird/path/ending/in/agent" }),
+    ).not.toBe("agent");
+  });
+
+  it("returns undefined when nothing identifies the agent", () => {
+    expect(resolveAgentId({})).toBeUndefined();
+  });
+
+  it("ignores sessionKeys that don't start with agent:<id>:", () => {
+    expect(resolveAgentId({ sessionKey: "session-xyz" })).toBeUndefined();
+    expect(resolveAgentId({ sessionKey: "agent:" })).toBeUndefined();
   });
 });
 
