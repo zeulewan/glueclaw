@@ -294,8 +294,17 @@ function extractTextContent(content: unknown): string {
 }
 
 function isOpenClawRuntimeMetadata(text: string): boolean {
-  const trimmed = text.trimStart();
-  return trimmed.startsWith("Sender (untrusted metadata):");
+  // OpenClaw injects per-turn context blocks as user-role messages on
+  // channel inbound. Each one's first line is a labelled
+  // "<Section> (untrusted metadata):" header, e.g.:
+  //   - "Sender (untrusted metadata):"
+  //   - "Conversation info (untrusted metadata):"
+  // Match the suffix on the first non-empty line so we recognize current
+  // and future labels without churning this list. See zeulewan/glueclaw#39.
+  const firstLine = text
+    .split(/\r?\n/, 1)[0]
+    ?.trim();
+  return /\(untrusted metadata\):$/.test(firstLine ?? "");
 }
 
 export function extractPromptText(messages: MessageLike[] | undefined): string {

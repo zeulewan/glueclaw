@@ -136,13 +136,18 @@ function extractLastUserText(
   messages: Array<{ role: string; content: unknown }> | undefined,
 ): string | undefined {
   if (!messages) return undefined;
+  // We deliberately skip "Sender (untrusted metadata):" blocks but allow
+  // "Conversation info (untrusted metadata):" through — the latter is the
+  // *only* place a channel's chat_id appears, and reading it is the whole
+  // point of this function. The prompt-extraction path in stream.ts has a
+  // broader filter because it wants to skip *all* runtime-context wraps.
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (!m) continue;
     if (m.role !== "user") continue;
     const c = m.content;
     if (typeof c === "string") {
-      if (!isOpenClawRuntimeMetadata(c)) return c;
+      if (!isSenderMetadataBlock(c)) return c;
       continue;
     }
     if (Array.isArray(c)) {
@@ -156,15 +161,14 @@ function extractLastUserText(
         )
         .map((b) => b.text)
         .join("\n");
-      if (txt && !isOpenClawRuntimeMetadata(txt)) return txt;
+      if (txt && !isSenderMetadataBlock(txt)) return txt;
     }
   }
   return undefined;
 }
 
-function isOpenClawRuntimeMetadata(text: string): boolean {
-  const trimmed = text.trimStart();
-  return trimmed.startsWith("Sender (untrusted metadata):");
+function isSenderMetadataBlock(text: string): boolean {
+  return text.trimStart().startsWith("Sender (untrusted metadata):");
 }
 
 function extractLeadingConversationChatId(text: string): string | undefined {

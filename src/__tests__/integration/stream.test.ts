@@ -552,6 +552,31 @@ describe("prompt extraction", () => {
     expect(args.at(-1)).toBe("why is the sky blue? answer in one sentence");
   });
 
+  it("ignores Conversation-info metadata wraps from channel inbound (zeulewan/glueclaw#39)", async () => {
+    // OpenClaw injects this shape on Telegram (and other channels) per turn.
+    // The block starts with "Conversation info (untrusted metadata):" and
+    // additionally contains a "Sender (untrusted metadata):" section. The
+    // detector must skip the whole block so the actual user text wins.
+    const args = await captureSubprocessArgs({
+      sessionKey: `prompt-runtime-tg-${Date.now()}-${Math.random()}`,
+      systemPrompt: "",
+      messages: [
+        {
+          role: "user",
+          content: "why is the sky blue",
+        },
+        {
+          role: "user",
+          content:
+            'Conversation info (untrusted metadata):\n```json\n{"chat_id":"telegram:540382330","sender":"Zeul M"}\n```\n\n' +
+            'Sender (untrusted metadata):\n```json\n{"label":"Zeul M (540382330)"}\n```',
+        },
+      ],
+    });
+
+    expect(args.at(-1)).toBe("why is the sky blue");
+  });
+
   it("still uses normal trailing user messages", async () => {
     const args = await captureSubprocessArgs({
       sessionKey: `prompt-normal-${Date.now()}-${Math.random()}`,
