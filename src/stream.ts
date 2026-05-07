@@ -26,6 +26,8 @@ interface StreamEventData {
   subtype?: string;
   session_id?: string;
   result?: string;
+  is_error?: boolean;
+  errors?: string[];
   usage?: Record<string, number>;
   event?: {
     delta?: { type?: string; text?: string };
@@ -36,29 +38,51 @@ interface StreamEventData {
 }
 
 /** Track claude session IDs per session key for multi-turn resume.
- *  Persisted to disk so sessions survive gateway restarts. */
-const GC_HOME = join(process.env.HOME ?? tmpdir(), ".glueclaw");
-const SESSION_FILE = join(GC_HOME, "sessions.json");
-const sessionMap = new Map<string, string>();
+ *  Persisted at `<workspaceDir>/.glueclaw/sessions.json`, so each OpenClaw
+ *  agent gets its own session cache. Requires OpenClaw 2026.5.x+ which
+ *  surfaces `ProviderCreateStreamFnContext.workspaceDir` to the plugin. */
 
-// Load persisted sessions on startup
-try {
-  const saved = JSON.parse(readFileSync(SESSION_FILE, "utf8"));
-  for (const [k, v] of Object.entries(saved)) {
-    if (typeof v === "string") sessionMap.set(k, v);
-  }
-} catch {
-  // Expected on first run when session file doesn't exist
+type SessionStore = { filePath: string; map: Map<string, string> };
+const sessionStores = new Map<string, SessionStore>();
+
+function sessionFilePath(workspaceDir: string): string {
+  return join(workspaceDir, ".glueclaw", "sessions.json");
 }
 
-export function persistSessions(): void {
+function getSessionStore(workspaceDir: string): SessionStore {
+  const filePath = sessionFilePath(workspaceDir);
+  let store = sessionStores.get(filePath);
+  if (!store) {
+    const map = new Map<string, string>();
+    try {
+      const saved = JSON.parse(readFileSync(filePath, "utf8"));
+      for (const [k, v] of Object.entries(saved)) {
+        if (typeof v === "string") map.set(k, v);
+      }
+    } catch {
+      // Expected on first run when session file doesn't exist
+    }
+    store = { filePath, map };
+    sessionStores.set(filePath, store);
+  }
+  return store;
+}
+
+function persistStore(store: SessionStore): void {
   try {
-    const tmp = SESSION_FILE + ".tmp";
-    writeFileSync(tmp, JSON.stringify(Object.fromEntries(sessionMap)));
-    renameSync(tmp, SESSION_FILE); // Atomic on most filesystems
+    mkdirSync(dirname(store.filePath), { recursive: true });
+    const tmp = store.filePath + ".tmp";
+    writeFileSync(tmp, JSON.stringify(Object.fromEntries(store.map)));
+    renameSync(tmp, store.filePath); // Atomic on most filesystems
   } catch {
     // Best-effort persistence — non-fatal if disk write fails
   }
+}
+
+/** Persist all known session stores to disk. Exported for tests and callers
+ *  that want to flush state explicitly. */
+export function persistSessions(): void {
+  for (const store of sessionStores.values()) persistStore(store);
 }
 
 export function buildUsage(raw?: Record<string, number>): Usage {
@@ -247,11 +271,50 @@ export function unscrubResponse(text: string): string {
     .replace(/\[\[reply:/g, "[[reply_to:");
 }
 
-/** Evict oldest sessions when map exceeds MAX_SESSIONS */
-function evictSessions(): void {
-  while (sessionMap.size > MAX_SESSIONS) {
-    const oldest = sessionMap.keys().next().value;
-    if (oldest !== undefined) sessionMap.delete(oldest);
+type MessageLike = { role: string; content: unknown };
+
+function extractTextContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter(
+      (b): b is TextContent =>
+        typeof b === "object" &&
+        b !== null &&
+        (b as { type?: unknown }).type === "text" &&
+        typeof (b as { text?: unknown }).text === "string",
+    )
+    .map((b) => b.text)
+    .join("\n");
+}
+
+function isOpenClawRuntimeMetadata(text: string): boolean {
+  // OpenClaw injects per-turn context blocks as user-role messages on
+  // channel inbound. Each one's first line is a labelled
+  // "<Section> (untrusted metadata):" header, e.g.:
+  //   - "Sender (untrusted metadata):"
+  //   - "Conversation info (untrusted metadata):"
+  // Match the suffix on the first non-empty line so we recognize current
+  // and future labels without churning this list. See zeulewan/glueclaw#39.
+  const firstLine = text.split(/\r?\n/, 1)[0]?.trim();
+  return /\(untrusted metadata\):$/.test(firstLine ?? "");
+}
+
+export function extractPromptText(messages: MessageLike[] | undefined): string {
+  for (let i = (messages?.length ?? 0) - 1; i >= 0; i--) {
+    const message = messages?.[i];
+    if (!message || message.role !== "user") continue;
+    const text = extractTextContent(message.content);
+    if (text && !isOpenClawRuntimeMetadata(text)) return text;
+  }
+  return "";
+}
+
+/** Evict oldest sessions when a workspace's map exceeds MAX_SESSIONS */
+function evictStore(store: SessionStore): void {
+  while (store.map.size > MAX_SESSIONS) {
+    const oldest = store.map.keys().next().value;
+    if (oldest !== undefined) store.map.delete(oldest);
     else break;
   }
 }
@@ -260,6 +323,7 @@ export function createClaudeCliStreamFn(opts: {
   claudeBin?: string;
   sessionKey?: string;
   agentId?: string;
+  workspaceDir: string;
   modelOverride?: string;
   requestTimeoutMs?: number;
 }): StreamFn {
@@ -299,28 +363,17 @@ export function createClaudeCliStreamFn(opts: {
         // leaving no way for callers to reinforce or correct an agent's
         // identity across turns.
         const sessionKey = `glueclaw:${effectiveSessionKey}`;
-        const existingSessionId = sessionMap.get(sessionKey);
+        const sessionStore = getSessionStore(opts.workspaceDir);
+        const existingSessionId = sessionStore.map.get(sessionKey);
         if (existingSessionId) {
           args.push("--resume", existingSessionId);
         }
         if (cleanPrompt) args.push("--system-prompt", cleanPrompt);
         if (resolvedModel) args.push("--model", resolvedModel);
 
-        // Debug: log args for resume troubleshooting
-        // Extract user message and scrub it too
-        const lastUser = [...(context.messages ?? [])]
-          .reverse()
-          .find((m) => m.role === "user");
-        let prompt = "";
-        if (lastUser) {
-          const c = lastUser.content;
-          if (typeof c === "string") prompt = c;
-          else if (Array.isArray(c))
-            prompt = c
-              .filter((b): b is TextContent => b.type === "text")
-              .map((b) => b.text)
-              .join("\n");
-        }
+        const prompt = extractPromptText(
+          context.messages as MessageLike[] | undefined,
+        );
         if (prompt) args.push(prompt);
 
         const env = { ...process.env };
@@ -330,22 +383,33 @@ export function createClaudeCliStreamFn(opts: {
         // Wire up MCP bridge for OpenClaw gateway tools
         const loopback = await getMcpLoopback();
         if (loopback) {
+          if (!opts.agentId) {
+            // Refuse to silently mis-stamp MCP loopback auth as a default
+            // agent — that's how zeulewan/glueclaw#36 hid behind a working
+            // setup whenever the active agent happened to be named "main".
+            throw new Error(
+              "GlueClaw cannot wire MCP loopback without a resolved agent id. " +
+                "OpenClaw did not propagate sessionKey or a parseable agentDir " +
+                "to the provider, so identity stamping would be ambiguous. " +
+                "See zeulewan/glueclaw#36.",
+            );
+          }
           const mcp = writeMcpConfig(loopback.port);
           mcpCleanup = mcp.cleanup;
           args.push("--strict-mcp-config", "--mcp-config", mcp.path);
           env.OPENCLAW_MCP_TOKEN = loopback.token;
           env.OPENCLAW_MCP_SESSION_KEY = effectiveSessionKey;
-          env.OPENCLAW_MCP_AGENT_ID = opts.agentId ?? "main";
+          env.OPENCLAW_MCP_AGENT_ID = opts.agentId;
           env.OPENCLAW_MCP_ACCOUNT_ID = "";
           env.OPENCLAW_MCP_MESSAGE_CHANNEL = "";
         }
 
-        // Use persistent dir so claude sessions survive restarts
-        const gcHome = join(process.env.HOME ?? "/tmp", ".glueclaw");
-        mkdirSync(gcHome, { recursive: true });
+        // Anchor Claude's project storage at the active OpenClaw agent
+        // workspace so per-agent state stays isolated.
+        mkdirSync(opts.workspaceDir, { recursive: true });
         const proc = spawn(claudeBin, args, {
           stdio: ["pipe", "pipe", "pipe"],
-          cwd: gcHome,
+          cwd: opts.workspaceDir,
           env,
         });
         if (options?.signal)
@@ -432,9 +496,9 @@ export function createClaudeCliStreamFn(opts: {
           if (type === "system" && data.subtype === "init") {
             const sid = data.session_id;
             if (sid) {
-              sessionMap.set(sessionKey, sid);
-              evictSessions();
-              persistSessions();
+              sessionStore.map.set(sessionKey, sid);
+              evictStore(sessionStore);
+              persistStore(sessionStore);
             }
             continue;
           }
@@ -516,11 +580,46 @@ export function createClaudeCliStreamFn(opts: {
 
           // Result event (final) - authoritative response
           if (type === "result") {
+            const isError =
+              data.is_error === true ||
+              data.subtype === "error_during_execution";
             const sid = data.session_id;
-            if (sid) {
-              sessionMap.set(sessionKey, sid);
-              evictSessions();
-              persistSessions();
+            if (sid && !isError) {
+              // Only persist the session id from a successful turn —
+              // claude emits a fresh session_id even on hard failures
+              // (e.g. stale --resume), and persisting that id would
+              // perpetuate the failure on every subsequent turn.
+              // See zeulewan/glueclaw#37.
+              sessionStore.map.set(sessionKey, sid);
+              evictStore(sessionStore);
+              persistStore(sessionStore);
+            }
+            if (isError) {
+              // The cached resume id is the most likely culprit (claude
+              // reports a missing conversation when the id has gone
+              // stale). Drop it so the next turn starts a fresh session.
+              if (existingSessionId) {
+                sessionStore.map.delete(sessionKey);
+                persistStore(sessionStore);
+              }
+              // Pick the most informative error string claude emitted:
+              //   - errors[] (e.g. "No conversation found with session ID: …")
+              //   - result   (e.g. "Failed to authenticate. API Error: 401 …")
+              //   - api_error_status alone (e.g. 401, 429)
+              // data.subtype is intentionally not used: even on real errors
+              // it can be the literal string "success" (it tags the result
+              // schema, not the outcome).
+              const apiStatus = (data as { api_error_status?: unknown })
+                .api_error_status;
+              const errText =
+                Array.isArray(data.errors) && data.errors.length > 0
+                  ? data.errors.join("; ")
+                  : typeof data.result === "string" && data.result.trim()
+                    ? data.result.trim()
+                    : typeof apiStatus === "number"
+                      ? `claude CLI failed with HTTP ${apiStatus}`
+                      : "claude CLI returned an error";
+              throw new Error(errText);
             }
             // Only use result text if nothing came through streaming or assistant
             if (!text) {

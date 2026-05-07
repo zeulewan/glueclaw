@@ -1,14 +1,25 @@
 import { describe, it, expect } from "vitest";
 import { resolve, join } from "node:path";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createClaudeCliStreamFn } from "../../stream.js";
 
 const MOCK_CLI = resolve(import.meta.dirname, "mock-claude.mjs");
 
 /**
+ * Each test gets its own temp workspaceDir so the per-workspace
+ * sessions.json is isolated and tests never collide on the same path.
+ */
+function makeTestWorkspace(): string {
+  return mkdtempSync(join(tmpdir(), "gc-test-ws-"));
+}
+
+/**
  * Collect all stream events from createClaudeCliStreamFn using the mock CLI.
  * The mock script reads MOCK_SCENARIO from the subprocess environment.
+ *
+ * Returns the workspaceDir so tests that want to inspect the session cache
+ * can reach it; pass `opts.workspaceDir` to share state across two calls.
  */
 async function collectEvents(
   scenario: string,
@@ -17,17 +28,23 @@ async function collectEvents(
     prompt?: string;
     systemPrompt?: string;
     requestTimeoutMs?: number;
+    workspaceDir?: string;
   },
-): Promise<Array<{ type: string; [key: string]: unknown }>> {
+): Promise<{
+  events: Array<{ type: string; [key: string]: unknown }>;
+  workspaceDir: string;
+}> {
   // Set env so the subprocess picks it up — must stay set until stream completes
   // because the subprocess is spawned asynchronously via queueMicrotask
   const origScenario = process.env.MOCK_SCENARIO;
   process.env.MOCK_SCENARIO = scenario;
+  const workspaceDir = opts?.workspaceDir ?? makeTestWorkspace();
 
   try {
     const streamFn = createClaudeCliStreamFn({
       claudeBin: MOCK_CLI,
       sessionKey: opts?.sessionKey ?? `test-${Date.now()}-${Math.random()}`,
+      workspaceDir,
       modelOverride: "claude-sonnet-4-6",
       requestTimeoutMs: opts?.requestTimeoutMs,
     });
@@ -52,7 +69,7 @@ async function collectEvents(
     for await (const event of stream) {
       events.push(event as any);
     }
-    return events;
+    return { events, workspaceDir };
   } finally {
     // Restore env after stream has fully completed
     if (origScenario !== undefined) process.env.MOCK_SCENARIO = origScenario;
@@ -62,7 +79,7 @@ async function collectEvents(
 
 describe("createClaudeCliStreamFn integration", () => {
   it("simple scenario: emits start, text_delta, done events", async () => {
-    const events = await collectEvents("simple");
+    const { events } = await collectEvents("simple");
     const types = events.map((e) => e.type);
     expect(types).toContain("start");
     expect(types).toContain("text_delta");
@@ -70,7 +87,7 @@ describe("createClaudeCliStreamFn integration", () => {
   });
 
   it("streaming scenario: delivers incremental text deltas", async () => {
-    const events = await collectEvents("streaming");
+    const { events } = await collectEvents("streaming");
     const deltas = events.filter((e) => e.type === "text_delta");
     expect(deltas.length).toBeGreaterThanOrEqual(2);
     const deltaTexts = deltas.map((d) => d.delta as string);
@@ -78,7 +95,7 @@ describe("createClaudeCliStreamFn integration", () => {
   });
 
   it("assistant scenario: handles assistant message fallback", async () => {
-    const events = await collectEvents("assistant");
+    const { events } = await collectEvents("assistant");
     const doneEvent = events.find((e) => e.type === "done");
     expect(doneEvent).toBeDefined();
     const msg = (doneEvent as any).message;
@@ -86,7 +103,7 @@ describe("createClaudeCliStreamFn integration", () => {
   });
 
   it("malformed NDJSON lines are skipped without crashing", async () => {
-    const events = await collectEvents("malformed");
+    const { events } = await collectEvents("malformed");
     const doneEvent = events.find((e) => e.type === "done");
     expect(doneEvent).toBeDefined();
     const msg = (doneEvent as any).message;
@@ -94,7 +111,7 @@ describe("createClaudeCliStreamFn integration", () => {
   });
 
   it("scrub scenario: reverse-translates tokens in result text", async () => {
-    const events = await collectEvents("scrub");
+    const { events } = await collectEvents("scrub");
     const doneEvent = events.find((e) => e.type === "done");
     expect(doneEvent).toBeDefined();
     const text = (doneEvent as any).message.content[0].text;
@@ -105,7 +122,7 @@ describe("createClaudeCliStreamFn integration", () => {
   });
 
   it("scrub-streaming: reverse-translates tokens in streaming deltas", async () => {
-    const events = await collectEvents("scrub-streaming");
+    const { events } = await collectEvents("scrub-streaming");
     const deltas = events.filter((e) => e.type === "text_delta");
     const fullText = deltas.map((d) => d.delta as string).join("");
     expect(fullText).toContain("reply_to_current");
@@ -113,7 +130,7 @@ describe("createClaudeCliStreamFn integration", () => {
   });
 
   it("scrub-streaming: done event text is not double-unscrubbed", async () => {
-    const events = await collectEvents("scrub-streaming");
+    const { events } = await collectEvents("scrub-streaming");
     const doneEvent = events.find((e) => e.type === "done") as any;
     const doneText = doneEvent.message.content[0].text;
     // Must contain the correctly unscrubbed token
@@ -123,7 +140,7 @@ describe("createClaudeCliStreamFn integration", () => {
   });
 
   it("hang: request timeout kills process and emits error", async () => {
-    const events = await collectEvents("hang", {
+    const { events } = await collectEvents("hang", {
       requestTimeoutMs: 3_000,
     });
     const errorOrDone = events.find(
@@ -134,14 +151,14 @@ describe("createClaudeCliStreamFn integration", () => {
   }, 15_000);
 
   it("stderr: CLI error output included in error event", async () => {
-    const events = await collectEvents("stderr");
+    const { events } = await collectEvents("stderr");
     const doneEvent = events.find((e) => e.type === "done") as any;
     // Process exits without emitting result — should still get done event
     expect(doneEvent).toBeDefined();
   });
 
   it("done event includes usage with correct token counts", async () => {
-    const events = await collectEvents("simple");
+    const { events } = await collectEvents("simple");
     const doneEvent = events.find((e) => e.type === "done");
     expect(doneEvent).toBeDefined();
     const usage = (doneEvent as any).message.usage;
@@ -150,7 +167,7 @@ describe("createClaudeCliStreamFn integration", () => {
   });
 
   it("empty output results in done event with fallback text", async () => {
-    const events = await collectEvents("empty");
+    const { events } = await collectEvents("empty");
     const doneEvent = events.find((e) => e.type === "done");
     expect(doneEvent).toBeDefined();
     const text = (doneEvent as any).message.content[0].text;
@@ -158,7 +175,7 @@ describe("createClaudeCliStreamFn integration", () => {
   });
 
   it("stream events have correct model metadata", async () => {
-    const events = await collectEvents("simple");
+    const { events } = await collectEvents("simple");
     const doneEvent = events.find((e) => e.type === "done") as any;
     expect(doneEvent.message.provider).toBe("glueclaw");
     expect(doneEvent.message.model).toBe("glueclaw-sonnet");
@@ -168,7 +185,7 @@ describe("createClaudeCliStreamFn integration", () => {
   });
 
   it("start event is emitted before any text_delta", async () => {
-    const events = await collectEvents("streaming");
+    const { events } = await collectEvents("streaming");
     const startIdx = events.findIndex((e) => e.type === "start");
     const firstDeltaIdx = events.findIndex((e) => e.type === "text_delta");
     expect(startIdx).toBeGreaterThanOrEqual(0);
@@ -178,21 +195,21 @@ describe("createClaudeCliStreamFn integration", () => {
 
 describe("tool activity indicators", () => {
   it("tool-use scenario: emits toolcall_start and toolcall_end events", async () => {
-    const events = await collectEvents("tool-use");
+    const { events } = await collectEvents("tool-use");
     const types = events.map((e) => e.type);
     expect(types).toContain("toolcall_start");
     expect(types).toContain("toolcall_end");
   });
 
   it("tool-use scenario: toolcall_start has tool name", async () => {
-    const events = await collectEvents("tool-use");
+    const { events } = await collectEvents("tool-use");
     const start = events.find((e) => e.type === "toolcall_start");
     expect(start).toBeDefined();
     expect((start as any).toolName).toBe("Bash");
   });
 
   it("tool-use scenario: text after tool use is captured in done event", async () => {
-    const events = await collectEvents("tool-use");
+    const { events } = await collectEvents("tool-use");
     const done = events.find((e) => e.type === "done");
     expect(done).toBeDefined();
     const msg = (done as any).message;
@@ -201,7 +218,7 @@ describe("tool activity indicators", () => {
   });
 
   it("multi-tool scenario: emits multiple toolcall_start/end pairs", async () => {
-    const events = await collectEvents("multi-tool");
+    const { events } = await collectEvents("multi-tool");
     const starts = events.filter((e) => e.type === "toolcall_start");
     const ends = events.filter((e) => e.type === "toolcall_end");
     expect(starts.length).toBe(2);
@@ -209,7 +226,7 @@ describe("tool activity indicators", () => {
   });
 
   it("multi-tool scenario: tool names are correct", async () => {
-    const events = await collectEvents("multi-tool");
+    const { events } = await collectEvents("multi-tool");
     const starts = events.filter((e) => e.type === "toolcall_start");
     expect((starts[0] as any).toolName).toBe("Read");
     expect((starts[1] as any).toolName).toBe("Bash");
@@ -220,13 +237,18 @@ describe("tool activity indicators", () => {
  * Launch a stream and collect all events. Unlike collectEvents(), this does
  * NOT set process.env.MOCK_SCENARIO — the caller must set it once before
  * launching parallel streams.
+ *
+ * Caller passes a workspaceDir (typically a fresh tmpdir for isolation, or
+ * a shared one when verifying same-workspace concurrent semantics).
  */
 async function launchStream(
   sessionKey: string,
+  workspaceDir: string,
 ): Promise<Array<{ type: string; [key: string]: unknown }>> {
   const streamFn = createClaudeCliStreamFn({
     claudeBin: MOCK_CLI,
     sessionKey,
+    workspaceDir,
     modelOverride: "claude-sonnet-4-6",
   });
   const model = {
@@ -249,11 +271,12 @@ async function launchStream(
 describe("concurrency", () => {
   it("parallel streams with different session keys complete independently", async () => {
     process.env.MOCK_SCENARIO = "streaming";
+    const wsDir = makeTestWorkspace();
     try {
       const results = await Promise.all([
-        launchStream(`conc-a-${Date.now()}`),
-        launchStream(`conc-b-${Date.now()}`),
-        launchStream(`conc-c-${Date.now()}`),
+        launchStream(`conc-a-${Date.now()}`, wsDir),
+        launchStream(`conc-b-${Date.now()}`, wsDir),
+        launchStream(`conc-c-${Date.now()}`, wsDir),
       ]);
 
       for (const events of results) {
@@ -273,19 +296,16 @@ describe("concurrency", () => {
       `conc-int-b-${Date.now()}`,
       `conc-int-c-${Date.now()}`,
     ];
+    const wsDir = makeTestWorkspace();
     process.env.MOCK_SCENARIO = "simple";
     try {
-      await Promise.all(keys.map((k) => launchStream(k)));
+      await Promise.all(keys.map((k) => launchStream(k, wsDir)));
     } finally {
       delete process.env.MOCK_SCENARIO;
     }
 
-    // Read sessions.json and verify all 3 keys are present
-    const sessFile = join(
-      process.env.HOME ?? tmpdir(),
-      ".glueclaw",
-      "sessions.json",
-    );
+    // Read the per-workspace sessions.json and verify all 3 keys are present
+    const sessFile = join(wsDir, ".glueclaw", "sessions.json");
     const saved = JSON.parse(readFileSync(sessFile, "utf8"));
     for (const key of keys) {
       expect(saved[`glueclaw:${key}`]).toBeDefined();
@@ -294,11 +314,12 @@ describe("concurrency", () => {
 
   it("same session key under concurrent access does not crash", async () => {
     const sharedKey = `conc-shared-${Date.now()}`;
+    const wsDir = makeTestWorkspace();
     process.env.MOCK_SCENARIO = "simple";
     try {
       const results = await Promise.all([
-        launchStream(sharedKey),
-        launchStream(sharedKey),
+        launchStream(sharedKey, wsDir),
+        launchStream(sharedKey, wsDir),
       ]);
 
       for (const events of results) {
@@ -313,10 +334,11 @@ describe("concurrency", () => {
 
   it("responses don't cross-contaminate between parallel streams", async () => {
     process.env.MOCK_SCENARIO = "streaming";
+    const wsDir = makeTestWorkspace();
     try {
       const results = await Promise.all([
-        launchStream(`conc-iso-a-${Date.now()}`),
-        launchStream(`conc-iso-b-${Date.now()}`),
+        launchStream(`conc-iso-a-${Date.now()}`, wsDir),
+        launchStream(`conc-iso-b-${Date.now()}`, wsDir),
       ]);
 
       for (const events of results) {
@@ -358,6 +380,7 @@ async function captureSubprocessEnv(opts: {
       claudeBin: MOCK_CLI,
       sessionKey: opts.sessionKey ?? `env-${Date.now()}-${Math.random()}`,
       agentId: opts.agentId,
+      workspaceDir: makeTestWorkspace(),
       modelOverride: "claude-sonnet-4-6",
     });
     const model = {
@@ -374,6 +397,8 @@ async function captureSubprocessEnv(opts: {
     for await (const event of stream) {
       if ((event as any).type === "done") {
         resultText = (event as any).message.content[0].text;
+      } else if ((event as any).type === "error") {
+        throw new Error((event as any).error.content[0].text);
       }
     }
     return JSON.parse(resultText);
@@ -398,9 +423,10 @@ describe("MCP agent identity", () => {
     expect(env.OPENCLAW_MCP_AGENT_ID).toBe("roy");
   });
 
-  it("falls back to 'main' when opts.agentId is omitted", async () => {
-    const env = await captureSubprocessEnv({});
-    expect(env.OPENCLAW_MCP_AGENT_ID).toBe("main");
+  it("throws rather than mis-stamping when opts.agentId is omitted", async () => {
+    // Regression for zeulewan/glueclaw#36: previously fell back to "main",
+    // which silently broke MCP auth for every non-"main" agent.
+    await expect(captureSubprocessEnv({})).rejects.toThrow(/agent id/i);
   });
 
   it("propagates opts.sessionKey alongside agentId independently", async () => {
@@ -421,6 +447,13 @@ async function captureSubprocessArgs(opts: {
   sessionKey: string;
   systemPrompt: string;
   mockSessionId?: string;
+  messages?: Array<{ role: string; content: unknown }>;
+  /**
+   * Pass an explicit workspaceDir to share session-cache state across two
+   * sequential calls (the resume tests rely on this). Otherwise each call
+   * gets its own fresh tmpdir for isolation.
+   */
+  workspaceDir?: string;
 }): Promise<string[]> {
   const origScenario = process.env.MOCK_SCENARIO;
   const origMockSession = process.env.MOCK_SESSION_ID;
@@ -432,6 +465,7 @@ async function captureSubprocessArgs(opts: {
     const streamFn = createClaudeCliStreamFn({
       claudeBin: MOCK_CLI,
       sessionKey: opts.sessionKey,
+      workspaceDir: opts.workspaceDir ?? makeTestWorkspace(),
       modelOverride: "claude-sonnet-4-6",
     });
     const model = {
@@ -441,7 +475,7 @@ async function captureSubprocessArgs(opts: {
     } as any;
     const context = {
       systemPrompt: opts.systemPrompt,
-      messages: [{ role: "user" as const, content: "hi" }],
+      messages: opts.messages ?? [{ role: "user" as const, content: "hi" }],
     } as any;
     const stream = await streamFn(model, context, {});
     let resultText = "";
@@ -475,12 +509,14 @@ describe("system prompt re-injection on resume", () => {
   it("includes BOTH --resume and --system-prompt on subsequent calls", async () => {
     const sessionKey = `sp-resume-${Date.now()}-${Math.random()}`;
     const mockSessionId = `mock-sid-${Date.now()}`;
+    const workspaceDir = makeTestWorkspace();
 
     // First call populates sessionMap via the mock's system/init event.
     await captureSubprocessArgs({
       sessionKey,
       systemPrompt: "You are persona BETA.",
       mockSessionId,
+      workspaceDir,
     });
 
     // Second call should resume AND re-inject the system prompt.
@@ -488,6 +524,7 @@ describe("system prompt re-injection on resume", () => {
       sessionKey,
       systemPrompt: "You are persona BETA.",
       mockSessionId,
+      workspaceDir,
     });
     expect(args).toContain("--resume");
     const resumeIdx = args.indexOf("--resume");
@@ -500,17 +537,20 @@ describe("system prompt re-injection on resume", () => {
   it("re-injects an updated system prompt on resume (identity drift recovery)", async () => {
     const sessionKey = `sp-drift-${Date.now()}-${Math.random()}`;
     const mockSessionId = `mock-sid-drift-${Date.now()}`;
+    const workspaceDir = makeTestWorkspace();
 
     await captureSubprocessArgs({
       sessionKey,
       systemPrompt: "You are agent A (original).",
       mockSessionId,
+      workspaceDir,
     });
 
     const args = await captureSubprocessArgs({
       sessionKey,
       systemPrompt: "You are agent A (corrected).",
       mockSessionId,
+      workspaceDir,
     });
     expect(args).toContain("--resume");
     const spIdx = args.indexOf("--system-prompt");
@@ -524,5 +564,214 @@ describe("system prompt re-injection on resume", () => {
       systemPrompt: "",
     });
     expect(args).not.toContain("--system-prompt");
+  });
+});
+
+describe("prompt extraction", () => {
+  it("ignores trailing OpenClaw runtime metadata user messages", async () => {
+    const args = await captureSubprocessArgs({
+      sessionKey: `prompt-runtime-${Date.now()}-${Math.random()}`,
+      systemPrompt: "",
+      messages: [
+        {
+          role: "user",
+          content: "why is the sky blue? answer in one sentence",
+        },
+        {
+          role: "user",
+          content:
+            'Sender (untrusted metadata):\n```json\n{"label":"openclaw-tui"}\n```',
+        },
+      ],
+    });
+
+    expect(args.at(-1)).toBe("why is the sky blue? answer in one sentence");
+  });
+
+  it("ignores Conversation-info metadata wraps from channel inbound (zeulewan/glueclaw#39)", async () => {
+    // OpenClaw injects this shape on Telegram (and other channels) per turn.
+    // The block starts with "Conversation info (untrusted metadata):" and
+    // additionally contains a "Sender (untrusted metadata):" section. The
+    // detector must skip the whole block so the actual user text wins.
+    const args = await captureSubprocessArgs({
+      sessionKey: `prompt-runtime-tg-${Date.now()}-${Math.random()}`,
+      systemPrompt: "",
+      messages: [
+        {
+          role: "user",
+          content: "why is the sky blue",
+        },
+        {
+          role: "user",
+          content:
+            'Conversation info (untrusted metadata):\n```json\n{"chat_id":"telegram:540382330","sender":"Zeul M"}\n```\n\n' +
+            'Sender (untrusted metadata):\n```json\n{"label":"Zeul M (540382330)"}\n```',
+        },
+      ],
+    });
+
+    expect(args.at(-1)).toBe("why is the sky blue");
+  });
+
+  it("still uses normal trailing user messages", async () => {
+    const args = await captureSubprocessArgs({
+      sessionKey: `prompt-normal-${Date.now()}-${Math.random()}`,
+      systemPrompt: "",
+      messages: [
+        { role: "user", content: "first" },
+        { role: "assistant", content: "response" },
+        { role: "user", content: "second" },
+      ],
+    });
+
+    expect(args.at(-1)).toBe("second");
+  });
+});
+
+/**
+ * Regression: zeulewan/glueclaw#37
+ *
+ * When claude returns is_error/error_during_execution because the cached
+ * --resume id is stale, GlueClaw must:
+ *  - NOT persist the new (useless) session_id from the error response
+ *  - DROP the cached resume id from sessions.json so the next turn starts fresh
+ *  - SURFACE the actual error message instead of falling back to "(no response)"
+ */
+describe("stale --resume recovery", () => {
+  it("emits an error event carrying the claude-side error text", async () => {
+    const sessionKey = `resume-err-${Date.now()}-${Math.random()}`;
+    const { events } = await collectEvents("resume-error", {
+      sessionKey,
+    });
+    const errorEvent = events.find((e) => e.type === "error");
+    expect(errorEvent).toBeDefined();
+    const errorText = (errorEvent as any).error.content[0].text;
+    expect(errorText).toMatch(/No conversation found/i);
+  });
+
+  it("does not persist the bogus session_id from an error result", async () => {
+    const sessionKey = `resume-err-noPersist-${Date.now()}-${Math.random()}`;
+    const { workspaceDir } = await collectEvents("resume-error", {
+      sessionKey,
+    });
+    const sessFile = join(workspaceDir, ".glueclaw", "sessions.json");
+    let saved: Record<string, unknown> = {};
+    try {
+      saved = JSON.parse(readFileSync(sessFile, "utf8"));
+    } catch {
+      // File may not exist yet — empty map is fine for this assertion.
+    }
+    expect(saved[`glueclaw:${sessionKey}`]).toBeUndefined();
+  });
+
+  it("surfaces claude's data.result text when errors[] is empty (e.g. 401 auth)", async () => {
+    const sessionKey = `auth-err-${Date.now()}-${Math.random()}`;
+    const { events } = await collectEvents("auth-error", { sessionKey });
+    const errorEvent = events.find((e) => e.type === "error");
+    expect(errorEvent).toBeDefined();
+    const errorText = (errorEvent as any).error.content[0].text;
+    expect(errorText).toMatch(/Failed to authenticate/i);
+    expect(errorText).toMatch(/401/);
+    // Must not leak the misleading "returned success" wording from the
+    // pre-fix error path.
+    expect(errorText).not.toMatch(/returned success/);
+  });
+
+  it("drops a previously-cached resume id when claude reports it stale", async () => {
+    const sessionKey = `resume-err-drop-${Date.now()}-${Math.random()}`;
+    const wsDir = makeTestWorkspace();
+    const sessFile = join(wsDir, ".glueclaw", "sessions.json");
+
+    // Step 1: a successful "simple" run primes the sessionMap with the mock
+    // session id "test-session-123".
+    await collectEvents("simple", { sessionKey, workspaceDir: wsDir });
+    let saved = JSON.parse(readFileSync(sessFile, "utf8"));
+    expect(saved[`glueclaw:${sessionKey}`]).toBe("test-session-123");
+
+    // Step 2: a follow-up turn against the resume-error scenario simulates
+    // claude rejecting the cached id. The cached id must be dropped on disk.
+    await collectEvents("resume-error", { sessionKey, workspaceDir: wsDir });
+    saved = JSON.parse(readFileSync(sessFile, "utf8"));
+    expect(saved[`glueclaw:${sessionKey}`]).toBeUndefined();
+  });
+});
+
+/**
+ * Regression: zeulewan/glueclaw#38
+ *
+ * When OpenClaw passes ctx.workspaceDir, claude is spawned with that as cwd
+ * and sessions are persisted under <workspaceDir>/.glueclaw/sessions.json
+ * instead of the legacy ~/.glueclaw global directory.
+ */
+describe("workspaceDir migration", () => {
+  it("spawns claude with workspaceDir as cwd when provided", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const wsDir = mkdtempSync(join(tmpdir(), "gc-ws-cwd-"));
+    const origScenario = process.env.MOCK_SCENARIO;
+    process.env.MOCK_SCENARIO = "cwd-echo";
+    try {
+      const streamFn = createClaudeCliStreamFn({
+        claudeBin: MOCK_CLI,
+        sessionKey: `ws-cwd-${Date.now()}`,
+        workspaceDir: wsDir,
+        modelOverride: "claude-sonnet-4-6",
+      });
+      const stream = await streamFn(
+        {
+          id: "glueclaw-sonnet",
+          api: "anthropic-messages",
+          provider: "glueclaw",
+        } as any,
+        { systemPrompt: "", messages: [{ role: "user", content: "x" }] } as any,
+        {},
+      );
+      let cwdReported = "";
+      for await (const ev of stream) {
+        if ((ev as any).type === "done") {
+          cwdReported = (ev as any).message.content[0].text;
+        }
+      }
+      // realpath: macOS /var → /private/var; tmpdir on linux is just /tmp
+      expect(cwdReported).toContain(wsDir.replace(/^\/var\//, "/private/var/"));
+    } finally {
+      if (origScenario !== undefined) process.env.MOCK_SCENARIO = origScenario;
+      else delete process.env.MOCK_SCENARIO;
+    }
+  });
+
+  it("persists sessions under <workspaceDir>/.glueclaw/sessions.json", async () => {
+    const { mkdtempSync, existsSync } = await import("node:fs");
+    const wsDir = mkdtempSync(join(tmpdir(), "gc-ws-sess-"));
+    const sessionKey = `ws-persist-${Date.now()}-${Math.random()}`;
+    const origScenario = process.env.MOCK_SCENARIO;
+    process.env.MOCK_SCENARIO = "simple";
+    try {
+      const streamFn = createClaudeCliStreamFn({
+        claudeBin: MOCK_CLI,
+        sessionKey,
+        workspaceDir: wsDir,
+        modelOverride: "claude-sonnet-4-6",
+      });
+      const stream = await streamFn(
+        {
+          id: "glueclaw-sonnet",
+          api: "anthropic-messages",
+          provider: "glueclaw",
+        } as any,
+        { systemPrompt: "", messages: [{ role: "user", content: "x" }] } as any,
+        {},
+      );
+      // drain
+      for await (const _ of stream) {
+        /* noop */
+      }
+    } finally {
+      if (origScenario !== undefined) process.env.MOCK_SCENARIO = origScenario;
+      else delete process.env.MOCK_SCENARIO;
+    }
+    const wsSessionsFile = join(wsDir, ".glueclaw", "sessions.json");
+    expect(existsSync(wsSessionsFile)).toBe(true);
+    const saved = JSON.parse(readFileSync(wsSessionsFile, "utf8"));
+    expect(saved[`glueclaw:${sessionKey}`]).toBe("test-session-123");
   });
 });

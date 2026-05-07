@@ -1,11 +1,10 @@
-import { basename } from "node:path";
 import {
   definePluginEntry,
   type OpenClawPluginApi,
 } from "openclaw/plugin-sdk/plugin-entry";
 import { createClaudeCliStreamFn } from "./src/stream.js";
 import { MODEL_CATALOG } from "./src/catalog.js";
-import { resolveSessionKey } from "./src/session-key.js";
+import { resolveAgentId, resolveSessionKey } from "./src/session-key.js";
 
 const PROVIDER_ID = "glueclaw";
 const PROVIDER_LABEL = "GlueClaw";
@@ -33,11 +32,26 @@ function resolveRequestTimeoutMs(): number {
 
 export default definePluginEntry({
   register(api: OpenClawPluginApi): void {
-    const authProfile = () =>
+    const syntheticAuth = () =>
       ({
         apiKey: AUTH_KEY,
         source: AUTH_SOURCE,
         mode: "api-key" as const,
+      }) as const;
+
+    const authResult = () =>
+      ({
+        profiles: [
+          {
+            profileId: `${PROVIDER_ID}:default`,
+            credential: {
+              type: "api_key" as const,
+              provider: PROVIDER_ID,
+              key: AUTH_KEY,
+            },
+          },
+        ],
+        notes: ["Uses local Claude CLI OAuth (Max subscription)."],
       }) as const;
 
     api.registerProvider({
@@ -47,11 +61,11 @@ export default definePluginEntry({
       envVars: ["GLUECLAW_KEY"],
       auth: [
         {
-          method: "local",
+          id: "local",
           label: "Local Claude CLI",
           hint: "Uses your locally installed claude binary",
-          authenticate: async () => authProfile(),
-          authenticateNonInteractive: async () => authProfile(),
+          kind: "custom" as const,
+          run: async () => authResult(),
         },
       ],
       catalog: {
@@ -87,21 +101,25 @@ export default definePluginEntry({
         agentDir?: string;
         sessionId?: string;
         sessionKey?: string;
+        workspaceDir?: string;
       }) => {
+        if (!ctx.workspaceDir) {
+          throw new Error(
+            "GlueClaw requires ProviderCreateStreamFnContext.workspaceDir, " +
+              "available in OpenClaw 2026.5.x+. Upgrade OpenClaw to a release " +
+              "that surfaces workspaceDir to provider plugins.",
+          );
+        }
         const realModel = MODEL_MAP[ctx.modelId] ?? ctx.modelId;
-        const agentId = ctx.agentDir ? basename(ctx.agentDir) : undefined;
         return createClaudeCliStreamFn({
           sessionKey: resolveSessionKey(ctx),
-          agentId,
+          agentId: resolveAgentId(ctx),
+          workspaceDir: ctx.workspaceDir,
           modelOverride: realModel,
           requestTimeoutMs: resolveRequestTimeoutMs(),
         });
       },
-      resolveSyntheticAuth: () => ({
-        apiKey: AUTH_KEY,
-        source: AUTH_SOURCE,
-        mode: "api-key",
-      }),
+      resolveSyntheticAuth: () => syntheticAuth(),
       augmentModelCatalog: () => [...MODEL_CATALOG],
     });
   },

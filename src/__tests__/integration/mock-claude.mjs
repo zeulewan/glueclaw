@@ -103,6 +103,57 @@ switch (scenario) {
     process.exit(1);
     break;
 
+  case "resume-error":
+    // Mimic real claude's behaviour when --resume points at a missing
+    // conversation: a single result event with is_error=true, zero turns,
+    // a fresh (and useless) session_id, and an errors[] message.
+    emit({
+      type: "result",
+      subtype: "error_during_execution",
+      is_error: true,
+      num_turns: 0,
+      session_id: sessionId,
+      duration_ms: 0,
+      duration_api_ms: 0,
+      stop_reason: null,
+      errors: [
+        `No conversation found with session ID: ${process.env.MOCK_RESUME_TARGET ?? "unknown"}`,
+      ],
+      usage: {},
+    });
+    break;
+
+  case "auth-error":
+    // Mimic real claude when OAuth has lapsed: result event with
+    // subtype="success" (the schema tag), is_error=true, the actual
+    // error text in `result`, and api_error_status set. No errors[]
+    // array — surfacing the real text requires reading data.result.
+    emit({
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      api_error_status: 401,
+      result:
+        "Failed to authenticate. API Error: 401 Invalid authentication credentials",
+      session_id: sessionId,
+      duration_ms: 0,
+      duration_api_ms: 0,
+      stop_reason: "stop_sequence",
+      num_turns: 1,
+      usage: {},
+    });
+    break;
+
+  case "cwd-echo":
+    emit({ type: "system", subtype: "init", session_id: sessionId });
+    emit({
+      type: "result",
+      session_id: sessionId,
+      result: process.cwd(),
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    break;
+
   case "empty":
     break;
 

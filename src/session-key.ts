@@ -1,3 +1,5 @@
+import { basename, dirname } from "node:path";
+
 /**
  * Pick the most specific identity-bearing key OpenClaw exposed for this
  * conversation, so each conversation gets its own Claude CLI session.
@@ -24,6 +26,46 @@ export function resolveSessionKey(ctx: {
     return undefined;
   };
   return pick(ctx.sessionKey, ctx.sessionId, ctx.agentDir) ?? "default";
+}
+
+/**
+ * Resolve the OpenClaw agent id from registration context.
+ *
+ * Precedence:
+ *   1. `sessionKey` matching `agent:<agentId>:…` — the key OpenClaw mints for
+ *      gateway-driven turns. Authoritative when present.
+ *   2. `agentDir` path. Two layouts seen:
+ *        - `<state>/agents/<agentId>/agent`  → take parent basename
+ *        - `<state>/agents/<agentId>`        → take basename
+ *      A bare basename of `"agent"` is the leaf marker, not an id, and would
+ *      collapse every agent to the same string — never accept it.
+ *   3. `undefined` — caller must decide whether to fail or degrade. We never
+ *      substitute a default like `"main"` here, because identity stamping
+ *      that's wrong-but-syntactically-valid silently breaks MCP auth for
+ *      every non-default agent (see zeulewan/glueclaw#36).
+ */
+export function resolveAgentId(ctx: {
+  sessionKey?: string;
+  agentDir?: string;
+}): string | undefined {
+  const fromSessionKey = ctx.sessionKey
+    ?.trim()
+    .match(/^agent:([^:]+):/)?.[1]
+    ?.trim();
+  if (fromSessionKey) return fromSessionKey;
+
+  const dir = ctx.agentDir?.trim();
+  if (dir) {
+    const last = basename(dir);
+    if (last === "agent") {
+      const parent = basename(dirname(dir));
+      if (parent && parent !== "agents") return parent;
+    } else if (last) {
+      return last;
+    }
+  }
+
+  return undefined;
 }
 
 /**
@@ -94,12 +136,20 @@ function extractLastUserText(
   messages: Array<{ role: string; content: unknown }> | undefined,
 ): string | undefined {
   if (!messages) return undefined;
+  // We deliberately skip "Sender (untrusted metadata):" blocks but allow
+  // "Conversation info (untrusted metadata):" through — the latter is the
+  // *only* place a channel's chat_id appears, and reading it is the whole
+  // point of this function. The prompt-extraction path in stream.ts has a
+  // broader filter because it wants to skip *all* runtime-context wraps.
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
     if (!m) continue;
     if (m.role !== "user") continue;
     const c = m.content;
-    if (typeof c === "string") return c;
+    if (typeof c === "string") {
+      if (!isSenderMetadataBlock(c)) return c;
+      continue;
+    }
     if (Array.isArray(c)) {
       const txt = c
         .filter(
@@ -111,10 +161,14 @@ function extractLastUserText(
         )
         .map((b) => b.text)
         .join("\n");
-      if (txt) return txt;
+      if (txt && !isSenderMetadataBlock(txt)) return txt;
     }
   }
   return undefined;
+}
+
+function isSenderMetadataBlock(text: string): boolean {
+  return text.trimStart().startsWith("Sender (untrusted metadata):");
 }
 
 function extractLeadingConversationChatId(text: string): string | undefined {

@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createClaudeCliStreamFn } from "../../stream.js";
+
+const makeTestWorkspace = (): string =>
+  mkdtempSync(join(tmpdir(), "gc-e2e-ws-"));
 
 /**
  * Strip vitest env vars so child processes (Claude CLI) don't inherit them.
@@ -37,6 +43,7 @@ describe.skipIf(!runLive)("Stream live — Max plan auth", () => {
   it("createClaudeCliStreamFn produces response via real CLI", async () => {
     const streamFn = createClaudeCliStreamFn({
       sessionKey: `e2e-max-${Date.now()}`,
+      workspaceDir: makeTestWorkspace(),
       modelOverride: "claude-sonnet-4-6",
     });
 
@@ -80,9 +87,13 @@ describe.skipIf(!runLive)("Stream live — Max plan auth", () => {
       provider: "glueclaw",
     } as any;
 
+    // Both calls share a workspaceDir so the cached session id survives.
+    const workspaceDir = makeTestWorkspace();
+
     // Call 1: Ask Claude to remember a word
     const streamFn1 = createClaudeCliStreamFn({
       sessionKey,
+      workspaceDir,
       modelOverride: "claude-sonnet-4-6",
     });
     const ctx1 = {
@@ -107,6 +118,7 @@ describe.skipIf(!runLive)("Stream live — Max plan auth", () => {
     // Call 2: Same sessionKey triggers --resume with saved session ID
     const streamFn2 = createClaudeCliStreamFn({
       sessionKey,
+      workspaceDir,
       modelOverride: "claude-sonnet-4-6",
     });
     const ctx2 = {

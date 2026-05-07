@@ -8,7 +8,7 @@ Uses the official Claude CLI and scrubs out [Anthropic's detection triggers](doc
 
 ## Install
 
-Requires [OpenClaw](https://docs.openclaw.ai) 2026.4.10+, [Claude Code](https://claude.ai/claude-code) logged in with Max, and Node.js 22+. Non-destructive, won't touch your existing config or sessions.
+Requires [OpenClaw](https://docs.openclaw.ai) 2026.5.x+, [Claude Code](https://claude.ai/claude-code) logged in with Max, and Node.js 22+. Non-destructive, won't touch your existing config or sessions.
 
 ### npm (recommended)
 
@@ -67,6 +67,7 @@ export GLUECLAW_REQUEST_TIMEOUT_MS=600000
 - Tested with Telegram and OpenClaw TUI
 - Switching between GlueClaw and other backends (e.g. Codex) works seamlessly via `/model`
 - The installer does not patch OpenClaw's dist. GlueClaw starts the MCP loopback in-process when available.
+- Multi-agent setups are isolated end-to-end: each agent gets its own Claude project storage and its own session-id cache, anchored at the agent's `workspaceDir`. See the [multi-agent guide](docs/multi-agent.md).
 
 ## Disclaimer
 
