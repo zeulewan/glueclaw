@@ -19,9 +19,7 @@ Symptom → diagnosis index. Each section starts with the user-visible behaviour
 **Fix on older builds:**
 
 1. Stop the gateway (see "Gateway 'restart' is a no-op" below — `tmux kill-session` is not enough; kill by pid).
-2. Wipe the session cache:
-   - Per-workspace builds: `echo '{}' > <workspaceDir>/.glueclaw/sessions.json`
-   - Legacy builds: `echo '{}' > ~/.glueclaw/sessions.json`
+2. Wipe the session cache: `echo '{}' > <workspaceDir>/.glueclaw/sessions.json`.
 3. Optionally also clear claude's project transcripts at `~/.claude/projects/<encoded-cwd>/` if you want a _fully_ clean slate.
 4. Restart the gateway.
 
@@ -99,7 +97,7 @@ If session tools such as `sessions_send` are missing inside the spawned claude:
 
 For resume to work, both must exist for the active agent:
 
-- The GlueClaw session map entry — at `<workspaceDir>/.glueclaw/sessions.json` (or legacy `~/.glueclaw/sessions.json`).
+- The GlueClaw session map entry — at `<workspaceDir>/.glueclaw/sessions.json`.
 - Claude's project transcript — at `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`.
 
 If only the GlueClaw entry exists (e.g. `~/.claude/projects/...` was cleared), the next turn will hit the stale-resume path. With #37 merged this auto-recovers; without it, the agent locks into `(no response)` (see "Agent replies `(no response)`" above).

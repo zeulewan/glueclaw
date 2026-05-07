@@ -38,12 +38,12 @@ The plugin registers with a synthetic auth key (`glueclaw-local`) so OpenClaw's 
 
 ## Per-agent isolation
 
-GlueClaw consumes `ctx.workspaceDir` from `ProviderCreateStreamFnContext` (available in OpenClaw 2026.5.x+) and uses it as:
+GlueClaw consumes `ctx.workspaceDir` from `ProviderCreateStreamFnContext` (required; available on OpenClaw 2026.5.x+) and uses it as:
 
 - The `cwd` for the spawned Claude CLI subprocess. Claude scopes conversation storage by cwd hash (`~/.claude/projects/<encoded-cwd>/<uuid>.jsonl`), so each agent gets its own project bucket.
 - The root for GlueClaw's own session-id cache (`<workspaceDir>/.glueclaw/sessions.json`).
 
-When `workspaceDir` is absent (older OpenClaw runtimes), GlueClaw falls back to the legacy global `~/.glueclaw` for both — preserving backward compatibility while keeping the per-workspace path on the happy path. See the [multi-agent guide](multi-agent.md) for layout details.
+If the runtime doesn't surface `workspaceDir`, the plugin throws at registration time with a clear error pointing at the upgrade path — there is no global-fallback mode. See the [multi-agent guide](multi-agent.md) for layout details.
 
 ## Agent identity stamping
 
@@ -97,7 +97,7 @@ The session-key derivation path (`src/session-key.ts`) intentionally does the **
 
 Sessions enable multi-turn conversation memory across separate requests.
 
-- **Storage:** `<workspaceDir>/.glueclaw/sessions.json` per agent (e.g. `~/.openclaw/workspaces/alice/.glueclaw/sessions.json`). Fallback: `~/.glueclaw/sessions.json` if the runtime didn't surface `workspaceDir`.
+- **Storage:** `<workspaceDir>/.glueclaw/sessions.json` per agent (e.g. `~/.openclaw/workspaces/alice/.glueclaw/sessions.json`).
 - **In-memory:** lazily-loaded `SessionStore` per workspace path; the gateway holds one `Map<workspacePath, SessionStore>` for the lifetime of the process.
 - **Key format:** `glueclaw:<effectiveSessionKey>` — `sessionKey` (preferred), then `sessionId`, then `agentDir`, then `default`.
 - **Capture:** Session id is set on `system/init`. **Not** persisted from `result` events when `is_error` is true (this prevents the stale-resume loop from forming).

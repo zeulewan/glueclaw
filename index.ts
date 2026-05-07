@@ -103,6 +103,13 @@ export default definePluginEntry({
         sessionKey?: string;
         workspaceDir?: string;
       }) => {
+        if (!ctx.workspaceDir) {
+          throw new Error(
+            "GlueClaw requires ProviderCreateStreamFnContext.workspaceDir, " +
+              "available in OpenClaw 2026.5.x+. Upgrade OpenClaw to a release " +
+              "that surfaces workspaceDir to provider plugins.",
+          );
+        }
         const realModel = MODEL_MAP[ctx.modelId] ?? ctx.modelId;
         return createClaudeCliStreamFn({
           sessionKey: resolveSessionKey(ctx),

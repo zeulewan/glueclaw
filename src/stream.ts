@@ -38,23 +38,18 @@ interface StreamEventData {
 }
 
 /** Track claude session IDs per session key for multi-turn resume.
- *  Persisted next to the active OpenClaw agent workspace so each agent gets
- *  its own session cache (see zeulewan/glueclaw#38). The legacy
- *  `~/.glueclaw/sessions.json` location is only used as a fallback for
- *  callers that don't pass a workspaceDir (older OpenClaw runtimes). */
-const LEGACY_GC_HOME = join(process.env.HOME ?? tmpdir(), ".glueclaw");
-const LEGACY_SESSION_FILE = join(LEGACY_GC_HOME, "sessions.json");
+ *  Persisted at `<workspaceDir>/.glueclaw/sessions.json`, so each OpenClaw
+ *  agent gets its own session cache. Requires OpenClaw 2026.5.x+ which
+ *  surfaces `ProviderCreateStreamFnContext.workspaceDir` to the plugin. */
 
 type SessionStore = { filePath: string; map: Map<string, string> };
 const sessionStores = new Map<string, SessionStore>();
 
-function sessionFilePath(workspaceDir?: string): string {
-  return workspaceDir
-    ? join(workspaceDir, ".glueclaw", "sessions.json")
-    : LEGACY_SESSION_FILE;
+function sessionFilePath(workspaceDir: string): string {
+  return join(workspaceDir, ".glueclaw", "sessions.json");
 }
 
-function getSessionStore(workspaceDir?: string): SessionStore {
+function getSessionStore(workspaceDir: string): SessionStore {
   const filePath = sessionFilePath(workspaceDir);
   let store = sessionStores.get(filePath);
   if (!store) {
@@ -328,7 +323,7 @@ export function createClaudeCliStreamFn(opts: {
   claudeBin?: string;
   sessionKey?: string;
   agentId?: string;
-  workspaceDir?: string;
+  workspaceDir: string;
   modelOverride?: string;
   requestTimeoutMs?: number;
 }): StreamFn {
@@ -410,14 +405,11 @@ export function createClaudeCliStreamFn(opts: {
         }
 
         // Anchor Claude's project storage at the active OpenClaw agent
-        // workspace so per-agent state stays isolated. Falls back to the
-        // legacy global directory only when the runtime didn't surface a
-        // workspaceDir (older OpenClaw versions).
-        const claudeCwd = opts.workspaceDir ?? LEGACY_GC_HOME;
-        mkdirSync(claudeCwd, { recursive: true });
+        // workspace so per-agent state stays isolated.
+        mkdirSync(opts.workspaceDir, { recursive: true });
         const proc = spawn(claudeBin, args, {
           stdio: ["pipe", "pipe", "pipe"],
-          cwd: claudeCwd,
+          cwd: opts.workspaceDir,
           env,
         });
         if (options?.signal)
