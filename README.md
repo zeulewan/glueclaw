@@ -67,6 +67,7 @@ export GLUECLAW_REQUEST_TIMEOUT_MS=600000
 - Tested with Telegram and OpenClaw TUI
 - Switching between GlueClaw and other backends (e.g. Codex) works seamlessly via `/model`
 - The installer does not patch OpenClaw's dist. GlueClaw starts the MCP loopback in-process when available.
+- Multi-agent setups are isolated end-to-end: each agent gets its own Claude project storage and its own session-id cache, anchored at the agent's `workspaceDir`. See the [multi-agent guide](docs/multi-agent.md).
 
 ## Disclaimer
 

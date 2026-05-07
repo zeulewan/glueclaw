@@ -52,10 +52,10 @@ Expected: `pong`
 
 ## Test suite
 
-61 automated tests, 0 skipped. Covers unit, integration (including concurrency and timeout), and end-to-end with real Claude CLI on Max plan auth.
+117 automated tests, 4 skipped. Covers unit, integration (including concurrency, timeout, stale-resume recovery, and per-workspace session routing), and end-to-end with real Claude CLI on Max plan auth.
 
 ```bash
-npm test                        # unit + integration (~1s)
+npm test                        # unit + integration (~7s)
 RUN_LIVE_TESTS=1 npm test       # full suite with live CLI (~30s)
 ```
 
@@ -64,19 +64,16 @@ See [testing](testing.md) for details.
 ## Uninstall
 
 ```bash
-openclaw config set agents.defaults.model \
-  anthropic/claude-sonnet-4-6
-cd "$(dirname "$(command -v openclaw)")/../lib/\
-node_modules/openclaw/dist" && \
-  for f in *.glueclaw-bak; do \
-    [ -f "$f" ] && mv "$f" "${f%.glueclaw-bak}"; \
-  done
-openclaw gateway restart
+openclaw plugins uninstall glueclaw --keep-files
+openclaw config set agents.defaults.model anthropic/claude-sonnet-4-6
+# Stop the gateway by pid (tmux kill-session may not reach it — see
+# troubleshooting), then start it again.
 ```
 
 ## More
 
 - [Architecture](architecture.md)
 - [Testing](testing.md)
+- [Multi-agent](multi-agent.md)
 - [Detection Patterns](detection-patterns.md)
 - [Troubleshooting](troubleshooting.md)
