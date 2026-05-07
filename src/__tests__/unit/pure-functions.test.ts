@@ -559,4 +559,23 @@ describe("deriveTurnSessionKey", () => {
       }),
     ).toBe("agent:roy:telegram:direct:123");
   });
+
+  it("skips OpenClaw runtime metadata when deriving from user messages", () => {
+    expect(
+      deriveTurnSessionKey({
+        agentId: "roy",
+        messages: [
+          {
+            role: "user",
+            content: 'Conversation info:\n{"chat_id":"telegram:123"}\n\nhello',
+          },
+          {
+            role: "user",
+            content:
+              'Sender (untrusted metadata):\n```json\n{"label":"openclaw-tui"}\n```',
+          },
+        ],
+      }),
+    ).toBe("agent:roy:telegram:direct:123");
+  });
 });

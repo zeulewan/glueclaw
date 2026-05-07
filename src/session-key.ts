@@ -99,7 +99,10 @@ function extractLastUserText(
     if (!m) continue;
     if (m.role !== "user") continue;
     const c = m.content;
-    if (typeof c === "string") return c;
+    if (typeof c === "string") {
+      if (!isOpenClawRuntimeMetadata(c)) return c;
+      continue;
+    }
     if (Array.isArray(c)) {
       const txt = c
         .filter(
@@ -111,10 +114,15 @@ function extractLastUserText(
         )
         .map((b) => b.text)
         .join("\n");
-      if (txt) return txt;
+      if (txt && !isOpenClawRuntimeMetadata(txt)) return txt;
     }
   }
   return undefined;
+}
+
+function isOpenClawRuntimeMetadata(text: string): boolean {
+  const trimmed = text.trimStart();
+  return trimmed.startsWith("Sender (untrusted metadata):");
 }
 
 function extractLeadingConversationChatId(text: string): string | undefined {

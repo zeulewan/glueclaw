@@ -421,6 +421,7 @@ async function captureSubprocessArgs(opts: {
   sessionKey: string;
   systemPrompt: string;
   mockSessionId?: string;
+  messages?: Array<{ role: string; content: unknown }>;
 }): Promise<string[]> {
   const origScenario = process.env.MOCK_SCENARIO;
   const origMockSession = process.env.MOCK_SESSION_ID;
@@ -441,7 +442,7 @@ async function captureSubprocessArgs(opts: {
     } as any;
     const context = {
       systemPrompt: opts.systemPrompt,
-      messages: [{ role: "user" as const, content: "hi" }],
+      messages: opts.messages ?? [{ role: "user" as const, content: "hi" }],
     } as any;
     const stream = await streamFn(model, context, {});
     let resultText = "";
@@ -524,5 +525,41 @@ describe("system prompt re-injection on resume", () => {
       systemPrompt: "",
     });
     expect(args).not.toContain("--system-prompt");
+  });
+});
+
+describe("prompt extraction", () => {
+  it("ignores trailing OpenClaw runtime metadata user messages", async () => {
+    const args = await captureSubprocessArgs({
+      sessionKey: `prompt-runtime-${Date.now()}-${Math.random()}`,
+      systemPrompt: "",
+      messages: [
+        {
+          role: "user",
+          content: "why is the sky blue? answer in one sentence",
+        },
+        {
+          role: "user",
+          content:
+            'Sender (untrusted metadata):\n```json\n{"label":"openclaw-tui"}\n```',
+        },
+      ],
+    });
+
+    expect(args.at(-1)).toBe("why is the sky blue? answer in one sentence");
+  });
+
+  it("still uses normal trailing user messages", async () => {
+    const args = await captureSubprocessArgs({
+      sessionKey: `prompt-normal-${Date.now()}-${Math.random()}`,
+      systemPrompt: "",
+      messages: [
+        { role: "user", content: "first" },
+        { role: "assistant", content: "response" },
+        { role: "user", content: "second" },
+      ],
+    });
+
+    expect(args.at(-1)).toBe("second");
   });
 });

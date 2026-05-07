@@ -247,6 +247,38 @@ export function unscrubResponse(text: string): string {
     .replace(/\[\[reply:/g, "[[reply_to:");
 }
 
+type MessageLike = { role: string; content: unknown };
+
+function extractTextContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter(
+      (b): b is TextContent =>
+        typeof b === "object" &&
+        b !== null &&
+        (b as { type?: unknown }).type === "text" &&
+        typeof (b as { text?: unknown }).text === "string",
+    )
+    .map((b) => b.text)
+    .join("\n");
+}
+
+function isOpenClawRuntimeMetadata(text: string): boolean {
+  const trimmed = text.trimStart();
+  return trimmed.startsWith("Sender (untrusted metadata):");
+}
+
+export function extractPromptText(messages: MessageLike[] | undefined): string {
+  for (let i = (messages?.length ?? 0) - 1; i >= 0; i--) {
+    const message = messages?.[i];
+    if (!message || message.role !== "user") continue;
+    const text = extractTextContent(message.content);
+    if (text && !isOpenClawRuntimeMetadata(text)) return text;
+  }
+  return "";
+}
+
 /** Evict oldest sessions when map exceeds MAX_SESSIONS */
 function evictSessions(): void {
   while (sessionMap.size > MAX_SESSIONS) {
@@ -306,21 +338,9 @@ export function createClaudeCliStreamFn(opts: {
         if (cleanPrompt) args.push("--system-prompt", cleanPrompt);
         if (resolvedModel) args.push("--model", resolvedModel);
 
-        // Debug: log args for resume troubleshooting
-        // Extract user message and scrub it too
-        const lastUser = [...(context.messages ?? [])]
-          .reverse()
-          .find((m) => m.role === "user");
-        let prompt = "";
-        if (lastUser) {
-          const c = lastUser.content;
-          if (typeof c === "string") prompt = c;
-          else if (Array.isArray(c))
-            prompt = c
-              .filter((b): b is TextContent => b.type === "text")
-              .map((b) => b.text)
-              .join("\n");
-        }
+        const prompt = extractPromptText(
+          context.messages as MessageLike[] | undefined,
+        );
         if (prompt) args.push(prompt);
 
         const env = { ...process.env };
