@@ -33,11 +33,26 @@ function resolveRequestTimeoutMs(): number {
 
 export default definePluginEntry({
   register(api: OpenClawPluginApi): void {
-    const authProfile = () =>
+    const syntheticAuth = () =>
       ({
         apiKey: AUTH_KEY,
         source: AUTH_SOURCE,
         mode: "api-key" as const,
+      }) as const;
+
+    const authResult = () =>
+      ({
+        profiles: [
+          {
+            profileId: `${PROVIDER_ID}:default`,
+            credential: {
+              type: "api_key" as const,
+              provider: PROVIDER_ID,
+              key: AUTH_KEY,
+            },
+          },
+        ],
+        notes: ["Uses local Claude CLI OAuth (Max subscription)."],
       }) as const;
 
     api.registerProvider({
@@ -47,11 +62,11 @@ export default definePluginEntry({
       envVars: ["GLUECLAW_KEY"],
       auth: [
         {
-          method: "local",
+          id: "local",
           label: "Local Claude CLI",
           hint: "Uses your locally installed claude binary",
-          authenticate: async () => authProfile(),
-          authenticateNonInteractive: async () => authProfile(),
+          kind: "custom" as const,
+          run: async () => authResult(),
         },
       ],
       catalog: {
@@ -97,11 +112,7 @@ export default definePluginEntry({
           requestTimeoutMs: resolveRequestTimeoutMs(),
         });
       },
-      resolveSyntheticAuth: () => ({
-        apiKey: AUTH_KEY,
-        source: AUTH_SOURCE,
-        mode: "api-key",
-      }),
+      resolveSyntheticAuth: () => syntheticAuth(),
       augmentModelCatalog: () => [...MODEL_CATALOG],
     });
   },
