@@ -1,6 +1,8 @@
 # GlueClaw
 
-Glue Claude back into OpenClaw.
+Glue Claude back into OpenClaw. 
+
+**GlueClaw will no longer work after June 15 2026 as per changes to -p mode billing**
 
 Uses the official Claude CLI and scrubs out [Anthropic's detection triggers](docs/detection-patterns.md) from the system prompt due to [Anthropic not allowing its use](https://iili.io/BuL3tKN.png). Tested with Telegram. As far as I can tell all functions work such as heartbeats.
 
